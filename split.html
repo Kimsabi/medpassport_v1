@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>약 여권 · 나란히 보기</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%232F5D62%22/%3E%3Cpath d=%22M8 8h6v6H8zM18 8h6v6h-6zM8 18h6v6H8zM18 18h2v2h-2zM22 22h2v2h-2z%22 fill=%22%23fff%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="assets/style.css">
+  <style>
+    html, body { height: 100%; overflow: hidden; }
+    body { display: flex; flex-direction: column; background: #E4E1D9; min-width: 1280px; }
+    .bar { flex: none; height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 18px; background: var(--surface); border-bottom: 1px solid var(--line); }
+    .bar b { font-size: 16px; }
+    .bar .sp { flex: 1; }
+    .stage { flex: 1; display: grid; grid-template-columns: 430px 1fr; gap: 18px; padding: 16px; min-height: 0; }
+    .phone { border: 1px solid #CFCAC0; border-radius: 34px; overflow: hidden; background: var(--bg); box-shadow: 0 20px 60px rgba(40,35,25,.18); display: flex; flex-direction: column; }
+    .desk { border: 1px solid #CFCAC0; border-radius: 14px; overflow: hidden; background: var(--bg); box-shadow: 0 20px 60px rgba(40,35,25,.12); }
+    iframe { border: 0; width: 100%; height: 100%; display: block; }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <b>약 여권 · 나란히 보기</b>
+    <span class="muted" style="font-size:13px">왼쪽 휴대폰과 오른쪽 업무용 웹이 실시간으로 연결돼요</span>
+    <span class="sp"></span>
+    <div class="seg small" id="who"><button class="on" data-v="elder">어르신 폰</button><button data-v="guardian">보호자 폰</button></div>
+    <div class="seg small" id="tab"><button data-v="pharmacy">약국</button><button class="on" data-v="clinic">진료</button><button data-v="audit">감사</button></div>
+    <a class="btn sm" href="index.html">처음</a>
+  </div>
+  <div class="stage">
+    <div class="phone"><iframe id="fApp" src="app.html?as=elder" allow="camera; screen-wake-lock" title="휴대폰 화면"></iframe></div>
+    <div class="desk"><iframe id="fWork" src="work.html#clinic" allow="camera" title="업무용 웹"></iframe></div>
+  </div>
+  <script>
+    function seg(id, fn) {
+      var root = document.getElementById(id);
+      root.addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        root.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on'); fn(b.dataset.v);
+      });
+    }
+    seg('who', function (v) { document.getElementById('fApp').src = 'app.html?as=' + v; });
+    seg('tab', function (v) { document.getElementById('fWork').contentWindow.location.hash = v; });
+  </script>
+</body>
+</html>

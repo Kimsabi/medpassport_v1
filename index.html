@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>약 여권 (Medication Passport) 시연</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%232F5D62%22/%3E%3Cpath d=%22M8 8h6v6H8zM18 8h6v6h-6zM8 18h6v6H8zM18 18h2v2h-2zM22 22h2v2h-2z%22 fill=%22%23fff%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="assets/style.css">
+  <style>
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 40px 24px 60px; }
+    .hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
+    .hero h1 { font-size: 40px; margin: 6px 0 8px; letter-spacing: -1px; }
+    .entries { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 30px; }
+    .entry { display: flex; flex-direction: column; gap: 10px; text-decoration: none; color: inherit; transition: transform .12s, box-shadow .12s; }
+    .entry:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+    .entry .ic { width: 54px; height: 54px; border-radius: 16px; background: var(--primary-weak); color: var(--primary); display: flex; align-items: center; justify-content: center; }
+    .entry .ic .icon { width: 30px; height: 30px; }
+    .entry h3 { font-size: 20px; }
+    .entry .qr { display: flex; gap: 12px; align-items: center; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line-2); font-size: 13px; color: var(--muted); }
+    .entry .qr .qr-box { width: 92px; padding: 6px; border-radius: 10px; }
+    .split { margin-top: 18px; display: flex; align-items: center; gap: 16px; text-decoration: none; color: inherit; }
+    .steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .steps li { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 14px 56px; position: relative; font-size: 14px; }
+    .steps li::before { content: counter(s); position: absolute; left: 16px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
+    .steps b { display: block; font-size: 15px; margin-bottom: 2px; }
+    .steps a { font-weight: 600; }
+    @media (max-width: 860px) { .entries, .steps { grid-template-columns: 1fr; } .hero h1 { font-size: 30px; } .entry .qr { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <div class="row" style="gap:10px;color:var(--primary);font-weight:700" id="brand"></div>
+        <h1>약 여권 시연</h1>
+        <div class="muted" style="font-size:17px">혼자 사는 어르신도 자주 먹는 약 정보를 어디서든 QR 하나로 보여줄 수 있게.</div>
+      </div>
+      <button class="btn" onclick="if(confirm('모든 시연 데이터를 처음 상태로 되돌릴까요?')){MP.resetAll();MP.toast('초기화했어요')}">시연 데이터 초기화</button>
+    </div>
+
+    <div class="entries">
+      <a class="card entry" href="app.html?as=elder" id="e-elder">
+        <div class="ic" data-i="phone"></div>
+        <h3>어르신 앱</h3>
+        <div class="muted">김영숙 님(78세, 독거)의 휴대폰. 쉬운 모드 · QR 보여주기 · 처방 등록 · 보호자 공개 범위</div>
+        <div class="qr"><div class="qr-box" data-qr="app.html?as=elder"></div><span>휴대폰 카메라로 찍으면<br>어르신 앱이 열려요</span></div>
+      </a>
+      <a class="card entry" href="app.html?as=guardian" id="e-guard">
+        <div class="ic" data-i="users"></div>
+        <h3>보호자 앱</h3>
+        <div class="muted">아들 김민수 님의 휴대폰. 내 약 여권 + 어머니 약 여권 함께 관리 (허락된 범위만)</div>
+        <div class="qr"><div class="qr-box" data-qr="app.html?as=guardian"></div><span>휴대폰 카메라로 찍으면<br>보호자 앱이 열려요</span></div>
+      </a>
+      <div class="card entry" style="cursor:pointer" onclick="if(!event.target.closest('a'))location.href='work.html#clinic'">
+        <div class="ic" data-i="monitor"></div>
+        <h3>업무용 웹</h3>
+        <div class="muted">노트북에서 열어요. <b>약국</b> 처방 등록·안내지 발급 · <b>진료</b> QR 리더기 스캔 · <b>감사</b> 열람 기록</div>
+        <div class="qr"><span class="row" style="gap:6px;flex-wrap:wrap"><a class="chip" href="work.html#pharmacy">약국</a><a class="chip" href="work.html#clinic">진료</a><a class="chip" href="work.html#audit">감사</a></span></div>
+      </div>
+    </div>
+
+    <a class="card split" href="split.html"><div class="ic" style="width:48px;height:48px;border-radius:14px;background:var(--bg-2);display:flex;align-items:center;justify-content:center" data-i="sidebar"></div>
+      <div class="grow"><b style="font-size:17px">노트북 한 대로 시연하기 (나란히 보기)</b><div class="muted" style="font-size:14px">왼쪽에 휴대폰 화면, 오른쪽에 업무용 웹. 한쪽에서 바꾸면 다른 쪽에 바로 반영돼요.</div></div><span class="btn primary">열기</span></a>
+
+    <h2 style="margin:40px 0 14px;font-size:20px">시연 순서</h2>
+    <ol class="steps">
+      <li><b>약국에서 등록</b>약사가 처방을 입력하고 어르신과 보호자 공개 범위를 정한 뒤 안내지(QR)를 출력해요. <a href="work.html#pharmacy">약국 열기</a></li>
+      <li><b>어르신 앱에 약 등록</b>쉬운 모드에서 '약 등록' → 안내지의 ① 처방 등록 QR 찍기. 처방전 사진 촬영(OCR 확인)도 가능해요.</li>
+      <li><b>보호자 연결 (선택)</b>아들 휴대폰의 '가족' → ② 보호자 연결 QR 찍기. 비공개 약은 '복약 여부만' 보여요.</li>
+      <li><b>병원 접수</b>어르신이 '의료진에게 보여주기' → 접수대 QR 리더기에 대면 진료 화면이 열려요. <a href="work.html#clinic">진료 열기</a></li>
+      <li><b>보안 장면</b>같은 QR을 다시 찍거나 5분 지난 QR을 찍으면 거부돼요. 거부 기록이 감사 로그에 남아요.</li>
+      <li><b>응급 상황</b>응급 QR(앱 또는 약수첩 스티커)을 찍으면 인터넷 없이 최소 정보만 보여요. 분실 스티커는 약국에서 무효화해요.</li>
+      <li><b>감사</b>보안 담당은 누가 언제 열람했는지만 보고, 약 이름 같은 의료 정보는 볼 수 없어요. <a href="work.html#audit">감사 열기</a></li>
+      <li><b>환자 확인</b>어르신 앱 '내 정보 › 열람 기록'과 알림에서 모든 열람을 확인하고, 보호자 연결은 언제든 해지해요.</li>
+    </ol>
+    <p class="faint" style="font-size:13px;margin-top:28px">시연용 프로토타입입니다. 모든 인물·기관·처방은 가상 데이터이며, 데이터는 이 브라우저 안(localStorage)에만 저장됩니다. 암호화 키는 시연을 위해 코드에 포함되어 있습니다.</p>
+  </div>
+  <script src="vendor/qrcode.js"></script>
+  <script src="assets/core.js"></script>
+  <script>
+    document.getElementById('brand').innerHTML = MP.icon('qr', 'lg') + '약 여권 · Medication Passport';
+    document.querySelectorAll('[data-i]').forEach(function (el) { el.innerHTML = MP.icon(el.dataset.i); });
+    document.querySelectorAll('[data-qr]').forEach(function (el) {
+      var url = new URL(el.dataset.qr, location.href).href;
+      el.innerHTML = MP.qrSVG(url, { ecc: 'L', margin: 1 });
+    });
+  </script>
+</body>
+</html>
