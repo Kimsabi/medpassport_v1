@@ -42,13 +42,13 @@
       <a class="card entry" href="app.html?as=elder" id="e-elder">
         <div class="ic" data-i="phone"></div>
         <h3>어르신 앱</h3>
-        <div class="muted">김영숙 님(78세, 독거)의 휴대폰. 쉬운 모드 · QR 보여주기 · 처방 등록 · 보호자 공개 범위</div>
+        <div class="muted">김영숙 님(78세, 독거)의 휴대폰. 쉬운 모드 · QR 보여주기 · 처방 등록 · 보호자 공유 설정</div>
         <div class="qr"><div class="qr-box" data-qr="app.html?as=elder"></div><span>휴대폰 카메라로 찍으면<br>어르신 앱이 열려요</span></div>
       </a>
       <a class="card entry" href="app.html?as=guardian" id="e-guard">
         <div class="ic" data-i="users"></div>
         <h3>보호자 앱</h3>
-        <div class="muted">아들 김민수 님의 휴대폰. 내 약 여권 + 어머니 약 여권 함께 관리 (허락된 범위만)</div>
+        <div class="muted">아들 김민수 님의 휴대폰. 내 약 여권 + 어머니 약 여권 함께 관리 (어머니가 허락한 범위만)</div>
         <div class="qr"><div class="qr-box" data-qr="app.html?as=guardian"></div><span>휴대폰 카메라로 찍으면<br>보호자 앱이 열려요</span></div>
       </a>
       <div class="card entry" style="cursor:pointer" onclick="if(!event.target.closest('a'))location.href='work.html#clinic'">
@@ -64,14 +64,14 @@
 
     <h2 style="margin:40px 0 14px;font-size:20px">시연 순서</h2>
     <ol class="steps">
-      <li><b>약국에서 등록</b>약사가 처방을 입력하고 어르신과 보호자 공개 범위를 정한 뒤 안내지(QR)를 출력해요. <a href="work.html#pharmacy">약국 열기</a></li>
-      <li><b>어르신 앱에 약 등록</b>쉬운 모드에서 '약 등록' → 안내지의 ① 처방 등록 QR 찍기. 처방전 사진 촬영(OCR 확인)도 가능해요.</li>
-      <li><b>보호자 연결 (선택)</b>아들 휴대폰의 '가족' → ② 보호자 연결 QR 찍기. 비공개 약은 '복약 여부만' 보여요.</li>
+      <li><b>약국에서 등록</b>약사가 본인 확인 후 처방을 입력하고, 어르신과 <b>보호자 공유 범위</b>(① 복약 현황 · ② 약 상세)를 정해요. 안내지 인쇄 또는 화면 QR로 전달해요. <a href="work.html#pharmacy">약국 열기</a></li>
+      <li><b>어르신 앱에 약 등록</b>쉬운 모드에서 '약 등록' → ① 처방 등록 QR 찍기(1회용). 처방전 사진 촬영(OCR 확인)도 가능해요.</li>
+      <li><b>보호자 연결 (선택)</b>아들 휴대폰의 '가족' → ② 보호자 연결 QR 찍기. <b>지정 번호 휴대폰에서만</b>, 1회용으로 연결되고 어르신에게 알림이 가요.</li>
+      <li><b>보호자 화면</b>복약 현황은 합계로만("오늘 약을 다 드셨어요"), 상세는 허용된 약만. 숨긴 약은 개수·시간도 안 보여요.</li>
       <li><b>병원 접수</b>어르신이 '의료진에게 보여주기' → 접수대 QR 리더기에 대면 진료 화면이 열려요. <a href="work.html#clinic">진료 열기</a></li>
-      <li><b>보안 장면</b>같은 QR을 다시 찍거나 5분 지난 QR을 찍으면 거부돼요. 거부 기록이 감사 로그에 남아요.</li>
-      <li><b>응급 상황</b>응급 QR(앱 또는 약수첩 스티커)을 찍으면 인터넷 없이 최소 정보만 보여요. 분실 스티커는 약국에서 무효화해요.</li>
-      <li><b>감사</b>보안 담당은 누가 언제 열람했는지만 보고, 약 이름 같은 의료 정보는 볼 수 없어요. <a href="work.html#audit">감사 열기</a></li>
-      <li><b>환자 확인</b>어르신 앱 '내 정보 › 열람 기록'과 알림에서 모든 열람을 확인하고, 보호자 연결은 언제든 해지해요.</li>
+      <li><b>보안 장면</b>같은 QR 재사용, 5분 지난 QR, 위조 코드는 모두 거부되고 감사 로그에 남아요.</li>
+      <li><b>응급 · 감사</b>앱의 응급 QR은 인터넷 없이 최소 정보만(기준일 표시). 감사 담당은 기록만 보고 의료 정보는 못 봐요. <a href="work.html#audit">감사 열기</a></li>
+      <li><b>환자 통제권</b>어르신 앱의 알림 · 열람 기록 확인, 공유 끄기, 보호자 연결 즉시 해지.</li>
     </ol>
     <p class="faint" style="font-size:13px;margin-top:28px">시연용 프로토타입입니다. 모든 인물·기관·처방은 가상 데이터이며, 데이터는 이 브라우저 안(localStorage)에만 저장됩니다. 암호화 키는 시연을 위해 코드에 포함되어 있습니다.</p>
   </div>

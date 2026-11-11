@@ -58,13 +58,14 @@
     gerd: { ko: '역류성 식도염', ja: '逆流性食道炎', en: 'GERD' },
   };
 
-  // 보호자 공개 범위 (기본값: 복약 여부만 = 최소 공개)
-  MP.VIS = {
-    full: { label: '약 이름까지 공개', short: '이름 공개' },
-    status: { label: '복약 여부만 공개', short: '복약 여부만' },
-    none: { label: '공개 안 함', short: '비공개' },
-  };
-  MP.DEFAULT_VIS = 'status';
+  /* 보호자 공유 (2단계)
+   *  ① 복약 현황: 환자가 고른 약들을 '합쳐서' 다 먹었는지만 (하루 단위 기본, 원하면 시간대 단위)
+   *  ② 약 상세: 환자가 허용한 약만 이름·함량·복용법·시간대별 복용 여부
+   *  상세 공유하지 않은 약은 개수·시간으로도 드러나지 않음
+   * 기본값: 복약 현황 켬(하루 단위, 모든 약 포함) / 약 상세 모두 끔 */
+  MP.SHARE_LVL = { day: '하루 단위', slot: '시간대 단위' };
+  MP.newMedShare = () => ({ share: false, inStatus: true });
+  MP.defaultSharing = () => ({ status: true, lvl: 'day' });
 
   /* ================================================================
    * 2. 날짜 · 유틸
@@ -94,9 +95,9 @@
       allergies: ['penicillin', 'contrast'],
       conditions: ['htn', 'dm2', 'insomnia'],
       meds: [
-        { id: 'm1', drug: 'metformin', freq: 'bid_pc', days: 30, start: MP.addDays(t, -14), rx: 'rx1', vis: 'status' },
-        { id: 'm2', drug: 'amlodipine', freq: 'qd_am', days: 30, start: MP.addDays(t, -27), rx: 'rx1', vis: 'status' },
-        { id: 'm3', drug: 'zolpidem', freq: 'qhs', days: 14, start: MP.addDays(t, -7), rx: 'rx2', vis: 'status' },
+        { id: 'm1', drug: 'metformin', freq: 'bid_pc', days: 30, start: MP.addDays(t, -14), rx: 'rx1', share: false, inStatus: true },
+        { id: 'm2', drug: 'amlodipine', freq: 'qd_am', days: 30, start: MP.addDays(t, -27), rx: 'rx1', share: false, inStatus: true },
+        { id: 'm3', drug: 'zolpidem', freq: 'qhs', days: 14, start: MP.addDays(t, -7), rx: 'rx2', share: false, inStatus: true },
       ],
       rx: [
         { id: 'rx2', org: '마음편한정신건강의학과', pharmacy: '온누리약국', date: MP.addDays(t, -7), count: 1, via: '약국 QR' },
@@ -104,6 +105,7 @@
       ],
       emergencyContact: { name: '김민수', rel: '아들', phone: '010-9876-5432' },
       emergencyOpts: { allergy: true, contact: true, meds: true },
+      sharing: MP.defaultSharing(),
       guardians: [],
       taken: { date: t, slots: { 'm1@아침': true, 'm2@아침': true } },
       notifications: [],
@@ -123,8 +125,8 @@
       phone: '010-9876-5432',
       allergies: [], conditions: ['gerd', 'dyslip'],
       meds: [
-        { id: 'g1', drug: 'esomeprazole', freq: 'qd_am', days: 28, start: MP.addDays(t, -10), rx: 'grx1', vis: 'status' },
-        { id: 'g2', drug: 'rosuvastatin', freq: 'qd_pm', days: 90, start: MP.addDays(t, -40), rx: 'grx2', vis: 'status' },
+        { id: 'g1', drug: 'esomeprazole', freq: 'qd_am', days: 28, start: MP.addDays(t, -10), rx: 'grx1', share: false, inStatus: true },
+        { id: 'g2', drug: 'rosuvastatin', freq: 'qd_pm', days: 90, start: MP.addDays(t, -40), rx: 'grx2', share: false, inStatus: true },
       ],
       rx: [
         { id: 'grx1', org: '바른속내과', pharmacy: '하나약국', date: MP.addDays(t, -10), count: 1, via: '처방전 촬영' },
@@ -132,6 +134,7 @@
       ],
       emergencyContact: { name: '이지은', rel: '배우자', phone: '010-1111-2222' },
       emergencyOpts: { allergy: true, contact: true, meds: true },
+      sharing: MP.defaultSharing(),
       guardians: [], linked: [],
       taken: { date: t, slots: { 'g1@아침': true } },
       notifications: [], accessLog: [], importedRx: [],
@@ -142,7 +145,8 @@
   /* ================================================================
    * 4. 저장소 (localStorage, 같은 브라우저 탭/창 사이 실시간 동기화)
    * ================================================================ */
-  const KEY = { elder: 'mp.elder', guardian: 'mp.guardian', audit: 'mp.audit', issued: 'mp.issued', revoked: 'mp.revoked', used: 'mp.used', shown: 'mp.lastShown', revokedLinks: 'mp.revokedLinks' };
+  const KEY = { elder: 'mp.elder', guardian: 'mp.guardian', audit: 'mp.audit', issued: 'mp.issued', revoked: 'mp.revoked', used: 'mp.used', shown: 'mp.lastShown', revokedLinks: 'mp.revokedLinks', usedLinks: 'mp.usedLinks', ver: 'mp.ver', lastPharmacy: 'mp.lastPharmacy', lastInvite: 'mp.lastInvite' };
+  const SCHEMA = 2;
   MP.KEY = KEY;
   const mem = {};
   function rawGet(k) { try { return localStorage.getItem(k); } catch (e) { return mem[k] ?? null; } }
@@ -160,7 +164,9 @@
   };
   MP.savePersona = (who, p) => MP.save(who === 'guardian' ? KEY.guardian : KEY.elder, p);
 
-  MP.resetAll = () => { Object.values(KEY).forEach(rawDel); };
+  MP.resetAll = () => { Object.values(KEY).forEach(rawDel); rawSet(KEY.ver, String(SCHEMA)); };
+  // 이전 버전 시연 데이터가 남아 있으면 초기화
+  if (rawGet(KEY.ver) !== String(SCHEMA)) MP.resetAll();
 
   MP.onSync = (fn) => window.addEventListener('storage', (e) => { if (!e.key || e.key.startsWith('mp.')) fn(e); });
 
@@ -177,10 +183,10 @@
       [-301, '미인증 요청', '—', 'PT-004660', '토큰 재사용 시도', '실시간 QR', '거부 · 사용된 토큰', '203.0.113.9', true],
       [-288, '[의료진] 하늘가정의학과', '의료진', 'PT-004660', '약 목록 열람', '실시간 QR', '허용', '10.0.21.5'],
       [-260, '[보호자] PT-003399', '보호자', 'PT-003310', '복약 현황 조회', '보호자 위임', '거부 · 위임 철회됨', '10.0.9.88'],
-      [-241, '[약사] 하나약국', '약사', 'PT-002981', '응급 QR 무효화', '약국 발급', '허용', '10.0.33.2'],
+      [-241, '[약사] 하나약국', '약사', 'PT-002981', '보호자 연결 QR 취소', '약국 발급', '허용', '10.0.33.2'],
       [-215, '[의료진] 행복내과의원', '의료진', 'PT-003310', '약 목록 열람', '실시간 QR', '거부 · 만료 토큰', '10.0.12.41'],
       [-214, '[의료진] 행복내과의원', '의료진', 'PT-003310', '약 목록 열람', '실시간 QR', '허용', '10.0.12.41'],
-      [-190, '[응급실] 서울○○병원', '의료진', 'PT-002981', '응급 정보 열람', '응급 QR', '거부 · 무효화된 스티커', '단말 로컬'],
+      [-190, '[보호자] PT-007702', '보호자', 'PT-002981', '보호자 연결', '보호자 위임', '거부 · 지정 보호자 불일치', '10.0.17.54', true],
       [-162, '[환자 본인] PT-001204', '환자', 'PT-001204', '열람 기록 확인', '앱', '허용', '10.0.5.61'],
       [-140, '[의료진] 튼튼정형외과', '의료진', 'PT-005870', '약 목록 열람', '실시간 QR', '허용', '10.0.44.18'],
       [-95, '[감사] 보안 담당', '감사', '—', '접근 기록 CSV 내보내기', '감사 웹', '허용', '10.0.1.2'],
@@ -197,17 +203,30 @@
   MP.seedIssued = () => {
     const now = Date.now(), h = 3600e3;
     return [
-      { id: 'E-7Q2KD9', type: 'E', pid: 'PT-002981', name: '박○○', ts: now - 30 * h, status: 'revoked', note: '분실 신고' },
+      { id: 'G-7Q2KD9', type: 'G', pid: 'PT-002981', name: '박○○', ts: now - 30 * h, exp: now - 6 * h, status: 'revoked', note: '보호자 변경 요청' },
       { id: 'R-3HX81A', type: 'R', pid: 'PT-003310', name: '이○○', ts: now - 6.6 * h },
-      { id: 'G-P0Q7MZ', type: 'G', pid: 'PT-003310', name: '이○○', ts: now - 6.6 * h, exp: now + 17.4 * h },
-      { id: 'E-9LM4TC', type: 'E', pid: 'PT-003310', name: '이○○', ts: now - 6.6 * h },
+      { id: 'G-P0Q7MZ', type: 'G', pid: 'PT-003310', name: '이○○', ts: now - 6.6 * h, exp: now + 17.4 * h, phone: '010-****-1180' },
       { id: 'R-K2V0B5', type: 'R', pid: 'PT-004871', name: '김○○', ts: now - 7 * 24 * h },
     ];
   };
   MP.getIssued = () => { let a = MP.load(KEY.issued, null); if (!a) { a = MP.seedIssued(); MP.save(KEY.issued, a); } return a; };
   MP.addIssued = (row) => { const a = MP.getIssued(); a.unshift({ ts: Date.now(), ...row }); MP.save(KEY.issued, a); };
   MP.getRevoked = () => { const issued = MP.getIssued(); return new Set([...MP.load(KEY.revoked, []), ...issued.filter((x) => x.status === 'revoked').map((x) => x.id)]); };
-  MP.revoke = (id) => { const r = MP.load(KEY.revoked, []); if (!r.includes(id)) r.push(id); MP.save(KEY.revoked, r); const a = MP.getIssued(); a.forEach((x) => { if (x.id === id) { x.status = 'revoked'; x.note = '약국에서 무효화'; } }); MP.save(KEY.issued, a); };
+  MP.revoke = (id, note) => {
+    const r = MP.load(KEY.revoked, []); if (!r.includes(id)) r.push(id); MP.save(KEY.revoked, r);
+    if (id.startsWith('G-')) { const rl = MP.load(KEY.revokedLinks, []); if (!rl.includes(id)) rl.push(id); MP.save(KEY.revokedLinks, rl); }
+    const a = MP.getIssued(); a.forEach((x) => { if (x.id === id) { x.status = 'revoked'; x.note = note || '약국에서 취소'; } }); MP.save(KEY.issued, a);
+  };
+  MP.markIssuedUsed = (id) => { const a = MP.getIssued(); a.forEach((x) => { if (x.id === id && x.status !== 'revoked') { x.status = 'used'; } }); MP.save(KEY.issued, a); };
+
+  /* ---------- 보호자 지정 번호 (해시로만 QR에 담음) ---------- */
+  MP.normPhone = (ph) => String(ph || '').replace(/\D/g, '');
+  MP.maskPhone = (ph) => { const d = MP.normPhone(ph); return d.length >= 8 ? `${d.slice(0, 3)}-****-${d.slice(-4)}` : ph; };
+  MP.phoneHash = async (ph) => {
+    const d = new TextEncoder().encode('mp-guardian:' + MP.normPhone(ph));
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', d));
+    return Array.from(h.slice(0, 8), (b) => b.toString(16).padStart(2, '0')).join('');
+  };
   MP.isUsed = (jti) => MP.load(KEY.used, []).includes(jti);
   MP.markUsed = (jti) => { const u = MP.load(KEY.used, []); u.push(jti); MP.save(KEY.used, u.slice(-300)); };
 
@@ -334,16 +353,40 @@
     c: opts.meds ? p.conditions : null,
     ec: opts.contact && p.emergencyContact ? [p.emergencyContact.name, p.emergencyContact.rel, p.emergencyContact.phone] : null,
   });
-  // 보호자 연결 QR: 공개 범위에 맞춰 허용된 정보만 담음
-  MP.buildGuardianPayload = (p, g) => {
+  // 보호자 연결 QR: 1회용 · 24시간 · 지정 보호자 번호(해시) 일치 시에만 연결
+  // 공유 설정에 맞춰 허용된 정보만 담음 (상세 공유하지 않은 약은 이름·개수·시간 모두 빠짐)
+  MP.buildGuardianPayload = (p, g, phoneHash) => {
     const iat = Math.floor(Date.now() / 1000);
+    const sh = p.sharing || MP.defaultSharing();
+    const inc = p.meds.filter((m) => m.inStatus !== false);
+    const slots = MP.SLOT_ORDER.filter((s) => inc.some((m) => MP.FREQ[m.freq].slots.includes(s)));
     return {
       v: 1, lid: g.id, iat, exp: iat + 24 * 3600,
-      pid: p.pid, n: p.name, b: p.birth, rel: g.rel, gt: g.type, gn: g.name,
+      pid: p.pid, n: p.name, b: p.birth, s: p.sex, rel: g.rel, gt: g.type, gn: g.name,
+      gph: phoneHash, gpm: MP.maskPhone(g.phone),
       perm: g.perms,
-      meds: p.meds.filter((m) => m.vis !== 'none').map((m) => [m.id, m.vis === 'full' ? m.drug : null, m.freq]),
-      ec: g.perms.emergencyQR ? 1 : 0,
+      st: sh.status && inc.length ? { lvl: sh.lvl, slots: sh.lvl === 'slot' ? slots : null } : null,
+      dm: p.meds.filter((m) => m.share).map((m) => [m.drug, m.freq]),
     };
+  };
+
+  // 보호자에게 보여줄 요약 (같은 브라우저에서 실시간 계산할 때 사용)
+  MP.medDue = (m) => (m.freq === 'qw_am' ? MP.daysBetween(m.start, MP.today()) % 7 === 0 : true);
+  MP.guardianSummary = (elder) => {
+    const sh = elder.sharing || MP.defaultSharing();
+    const taken = (m, s) => !!elder.taken?.slots?.[`${m.id}@${s}`];
+    const out = { status: null, details: [] };
+    if (sh.status) {
+      const inc = elder.meds.filter((m) => m.inStatus !== false && MP.medDue(m));
+      const bySlot = {};
+      inc.forEach((m) => MP.FREQ[m.freq].slots.forEach((s) => (bySlot[s] = bySlot[s] || []).push(taken(m, s))));
+      const all = Object.values(bySlot).flat();
+      out.status = { lvl: sh.lvl, any: all.length > 0, done: all.length > 0 && all.every(Boolean),
+        slots: MP.SLOT_ORDER.filter((s) => bySlot[s]).map((s) => ({ s, done: bySlot[s].every(Boolean) })) };
+    }
+    out.details = elder.meds.filter((m) => m.share).map((m) => ({ drug: m.drug, freq: m.freq,
+      slots: MP.medDue(m) ? MP.FREQ[m.freq].slots.map((s) => ({ s, done: taken(m, s) })) : [] }));
+    return out;
   };
 
   /* ================================================================

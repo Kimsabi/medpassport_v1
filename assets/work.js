@@ -47,29 +47,31 @@
   }
 
   /* ================================================================
-   * 1. 약국: 처방 입력 → 공개 범위 → 안내지(QR) 발급 / 발급 현황·무효화
+   * 1. 약국: 처방 입력 → 보호자 공유 설정 → QR 안내지(①처방 등록 ②보호자 연결) / 발급 현황
    * ================================================================ */
   let PH = null;
   function freshPH() {
     const e = MP.getPersona('elder');
     return {
-      sub: 'issue', verified: false, org: '행복내과의원', date: MP.today(),
-      items: [{ drug: 'atorvastatin', freq: 'qd_pm', days: 30, vis: MP.DEFAULT_VIS, isNew: true }]
-        .concat(e.meds.map((m) => ({ drug: m.drug, freq: m.freq, days: m.days, vis: m.vis || MP.DEFAULT_VIS, isNew: false }))),
-      guardian: { on: false, type: 'family', name: '김민수', rel: '아들', status: true, emergencyQR: true },
-      sticker: { on: true, allergy: true, contact: true, meds: true },
+      sub: 'issue', verified: false, org: '행복내과의원', date: MP.today(), output: 'print',
+      items: [{ drug: 'atorvastatin', freq: 'qd_pm', days: 30, ...MP.newMedShare(), isNew: true }]
+        .concat(e.meds.map((m) => ({ drug: m.drug, freq: m.freq, days: m.days, share: !!m.share, inStatus: m.inStatus !== false, isNew: false }))),
+      sharing: { ...(e.sharing || MP.defaultSharing()) },
+      guardian: { on: false, type: 'family', name: '김민수', rel: '아들', phone: '010-9876-5432', status: true, detail: true, emergencyQR: true },
       out: null,
     };
   }
   const FREQ_OPTS = Object.entries(MP.FREQ).map(([k, f]) => [k, f.short]);
+  const cb = (on, js, extra = '') => `<input type="checkbox" style="width:18px;height:18px;accent-color:var(--primary)" ${on ? 'checked' : ''} onchange="${js}" ${extra}>`;
 
   function renderPharmacy() {
     if (!PH) PH = freshPH();
     const main = document.getElementById('main');
-    const subtabs = `<div class="seg noprint" style="margin-bottom:18px"><button class="${PH.sub === 'issue' ? 'on' : ''}" onclick="W.phSub('issue')">처방 등록 · 안내지 발급</button><button class="${PH.sub === 'list' ? 'on' : ''}" onclick="W.phSub('list')">발급 현황 · 무효화</button></div>`;
+    const subtabs = `<div class="seg noprint" style="margin-bottom:18px"><button class="${PH.sub === 'issue' ? 'on' : ''}" onclick="W.phSub('issue')">처방 등록 · QR 발급</button><button class="${PH.sub === 'list' ? 'on' : ''}" onclick="W.phSub('list')">발급 현황</button></div>`;
     if (PH.sub === 'list') { main.innerHTML = subtabs + issuedList(); return; }
     const e = MP.getPersona('elder');
     const dur = MP.durCheck(PH.items.map((i) => i.drug), e.allergies);
+    const g = PH.guardian;
     main.innerHTML = `${subtabs}
       <div class="grid2">
         <div class="stack noprint">
@@ -82,137 +84,152 @@
           </div>
 
           <div class="card">
-            <h3 class="h-sec">${I('doc')} 처방 내용</h3>
+            <h3 class="h-sec">${I('doc')} 처방 내용과 보호자 공유</h3>
             <div class="row" style="gap:12px"><label class="field grow"><span>처방 기관</span><input class="input" value="${esc(PH.org)}" onchange="W.ph('org',this.value)"></label><label class="field" style="width:170px"><span>처방일</span><input class="input mono" type="date" value="${PH.date}" onchange="W.ph('date',this.value)"></label></div>
             <div style="margin-top:16px">
-              <div class="medrow head"><span>약품</span><span>복용법</span><span>일수</span><span>보호자 공개 범위</span><span></span></div>
+              <div class="medrow head"><span>약품</span><span>복용법</span><span>일수</span><span style="text-align:center">① 현황 포함</span><span style="text-align:center">② 상세 공유</span><span></span></div>
               ${PH.items.map((it, i) => `<div class="medrow">
                 <span>${it.isNew ? `<select class="input" onchange="W.phItem(${i},'drug',this.value)">${Object.keys(MP.DRUGS).map((k) => `<option value="${k}" ${k === it.drug ? 'selected' : ''}>${MP.drugName(k)}</option>`).join('')}</select>` : `<b style="font-size:14px">${MP.drugName(it.drug)}</b>${D(it.drug).sensitive ? ' <span class="chip warn" style="font-size:11px;padding:1px 6px">민감</span>' : ''}<div class="faint" style="font-size:12px">기존 복용</div>`}</span>
                 <span>${it.isNew ? `<select class="input" onchange="W.phItem(${i},'freq',this.value)">${FREQ_OPTS.map(([k, t]) => `<option value="${k}" ${k === it.freq ? 'selected' : ''}>${t}</option>`).join('')}</select>` : `<span class="sub">${MP.FREQ[it.freq].short}</span>`}</span>
                 <span>${it.isNew ? `<input class="input mono" type="number" min="1" value="${it.days}" onchange="W.phItem(${i},'days',+this.value)">` : `<span class="sub mono">${it.days}</span>`}</span>
-                <span><select class="input" onchange="W.phItem(${i},'vis',this.value)">${Object.entries(MP.VIS).map(([k, v]) => `<option value="${k}" ${k === it.vis ? 'selected' : ''}>${v.label}</option>`).join('')}</select></span>
+                <span style="text-align:center">${cb(it.inStatus, `W.phItem(${i},'inStatus',this.checked)`, PH.sharing.status ? '' : 'disabled')}</span>
+                <span style="text-align:center">${cb(it.share, `W.phItem(${i},'share',this.checked)`)}</span>
                 <span>${it.isNew ? `<button class="x" onclick="W.phDel(${i})" title="삭제">${I('x')}</button>` : ''}</span></div>`).join('')}
               <button class="btn sm" style="margin-top:10px" onclick="W.phAdd()">${I('plus')} 약 추가</button>
             </div>
             ${dur.length ? `<div class="stack" style="margin-top:14px">${dur.map((d) => `<div class="alert ${d.level === 'warn' ? 'warn' : ''}">${I('tri')}<span><b>DUR</b> · ${esc(d.text)}</span></div>`).join('')}</div>` : `<div class="alert ok" style="margin-top:14px">${I('check')}<span>DUR 점검: 중복·금기 없음</span></div>`}
-            <div class="notice" style="display:flex;gap:10px;margin-top:14px;padding:12px 14px;background:var(--primary-weak);border-radius:12px;color:var(--primary-2);font-size:14px">${I('eye')}<span><b>공개 범위는 어르신과 함께 정해 주세요.</b> 기본값은 '복약 여부만'이에요. 의료진은 이 설정과 관계없이 진료용 QR로 전체 처방을 봐요.</span></div>
+            <div class="card soft" style="margin-top:14px;padding:14px 16px">
+              <div class="between"><label class="check" style="font-weight:700">${cb(PH.sharing.status, "W.phSh('status',this.checked)")} ① 보호자에게 복약 현황 공유</label>
+                ${PH.sharing.status ? `<div class="seg small">${Object.entries(MP.SHARE_LVL).map(([k, t]) => `<button class="${PH.sharing.lvl === k ? 'on' : ''}" onclick="W.phSh('lvl','${k}')">${t}</button>`).join('')}</div>` : ''}</div>
+              <div class="sub" style="margin-top:6px">① 현황: 체크한 약들을 <b>합쳐서</b> 다 드셨는지만 보여요. ② 상세: 체크한 약만 이름·복용법이 보여요. 상세 공유하지 않은 약은 개수·시간도 드러나지 않아요.</div>
+            </div>
+            <div class="notice" style="display:flex;gap:10px;margin-top:12px;padding:12px 14px;background:var(--primary-weak);border-radius:12px;color:var(--primary-2);font-size:14px">${I('eye')}<span><b>공유 범위는 어르신과 함께 정해 주세요.</b> 기본값은 '① 현황 하루 단위, ② 상세 모두 꺼짐'이에요. 의료진은 이 설정과 관계없이 진료용 QR로 전체 처방을 봐요.</span></div>
           </div>
 
           <div class="card">
-            <label class="check" style="font-weight:700"><input type="checkbox" ${PH.guardian.on ? 'checked' : ''} onchange="W.phG('on',this.checked)"> 보호자 연결 QR도 함께 출력 <span class="sub" style="font-weight:400">(선택 · 어르신이 원할 때만)</span></label>
-            ${PH.guardian.on ? `<div class="stack" style="margin-top:12px;padding-left:28px">
-              <div class="seg"><button class="${PH.guardian.type === 'family' ? 'on' : ''}" onclick="W.phGType('family')">가족</button><button class="${PH.guardian.type === 'care' ? 'on' : ''}" onclick="W.phGType('care')">보건소 돌봄 담당자</button></div>
-              <div class="row" style="gap:12px"><label class="field grow"><span>보호자 이름</span><input class="input" value="${esc(PH.guardian.name)}" onchange="W.phG('name',this.value)"></label><label class="field grow"><span>관계</span><input class="input" value="${esc(PH.guardian.rel)}" onchange="W.phG('rel',this.value)"></label></div>
-              <label class="check"><input type="checkbox" ${PH.guardian.status ? 'checked' : ''} onchange="W.phG('status',this.checked)"> 오늘 복약 현황 보기</label>
-              <label class="check"><input type="checkbox" ${PH.guardian.emergencyQR ? 'checked' : ''} onchange="W.phG('emergencyQR',this.checked)"> 응급 QR 대신 보여주기 <span class="sub">(보호자도 내용은 못 보는 암호화 QR)</span></label>
-              ${PH.guardian.type === 'care' ? '<div class="sub">가족이 없는 어르신은 보건소 방문간호·돌봄 담당자를 보호자로 연결할 수 있어요.</div>' : ''}
+            <label class="check" style="font-weight:700"><input type="checkbox" ${g.on ? 'checked' : ''} onchange="W.phG('on',this.checked)"> 보호자 연결 QR도 함께 발급 <span class="sub" style="font-weight:400">(선택 · 어르신이 원할 때만)</span></label>
+            ${g.on ? `<div class="stack" style="margin-top:12px;padding-left:28px">
+              <div class="seg"><button class="${g.type === 'family' ? 'on' : ''}" onclick="W.phGType('family')">가족</button><button class="${g.type === 'care' ? 'on' : ''}" onclick="W.phGType('care')">보건소 돌봄 담당자</button></div>
+              <div class="row" style="gap:12px"><label class="field grow"><span>보호자 이름</span><input class="input" value="${esc(g.name)}" onchange="W.phG('name',this.value)"></label><label class="field grow"><span>관계</span><input class="input" value="${esc(g.rel)}" onchange="W.phG('rel',this.value)"></label></div>
+              <label class="field"><span>보호자 휴대폰 번호 — 이 번호의 휴대폰에서만 연결돼요</span><input class="input mono" value="${esc(g.phone)}" onchange="W.phG('phone',this.value)"></label>
+              <div class="row" style="gap:18px;flex-wrap:wrap">
+                <label class="check"><input type="checkbox" ${g.status ? 'checked' : ''} onchange="W.phG('status',this.checked)"> ① 복약 현황 보기</label>
+                <label class="check"><input type="checkbox" ${g.detail ? 'checked' : ''} onchange="W.phG('detail',this.checked)"> ② 약 상세 보기</label>
+                <label class="check"><input type="checkbox" ${g.emergencyQR ? 'checked' : ''} onchange="W.phG('emergencyQR',this.checked)"> 응급 QR 대신 보여주기</label>
+              </div>
+              <div class="sub">1회용 · 24시간 유효 · 지정 번호 휴대폰에서만 연결 · 연결되면 어르신에게 알림${g.type === 'care' ? ' · 가족이 없는 어르신은 보건소 방문간호·돌봄 담당자를 연결할 수 있어요' : ''}</div>
             </div>` : ''}
           </div>
 
-          <div class="card">
-            <label class="check" style="font-weight:700"><input type="checkbox" ${PH.sticker.on ? 'checked' : ''} onchange="W.phS('on',this.checked)"> 응급 QR 스티커 출력 <span class="sub" style="font-weight:400">(종이 약수첩·지갑용)</span></label>
-            ${PH.sticker.on ? `<div style="margin-top:10px;padding-left:28px" class="stack">
-              <div class="sub">스티커에 넣을 정보는 어르신이 고르세요.</div>
-              <div class="row" style="gap:18px;flex-wrap:wrap">
-                <label class="check"><input type="checkbox" ${PH.sticker.allergy ? 'checked' : ''} onchange="W.phS('allergy',this.checked)"> 알레르기</label>
-                <label class="check"><input type="checkbox" ${PH.sticker.contact ? 'checked' : ''} onchange="W.phS('contact',this.checked)"> 보호자 연락처</label>
-                <label class="check"><input type="checkbox" ${PH.sticker.meds ? 'checked' : ''} onchange="W.phS('meds',this.checked)"> 복용 약 · 기저질환</label>
-              </div></div>` : ''}
+          <div class="card between">
+            <div><b>전달 방법</b><div class="sub">일본 약수첩처럼 종이로 드리거나, 이 화면을 바로 찍게 할 수 있어요.</div></div>
+            <div class="seg"><button class="${PH.output === 'print' ? 'on' : ''}" onclick="W.phOut('print')">${I('printer')} 안내지 인쇄</button><button class="${PH.output === 'screen' ? 'on' : ''}" onclick="W.phOut('screen')">${I('monitor')} 화면에 띄우기</button></div>
           </div>
 
-          <button class="btn primary lg block" ${PH.verified ? '' : 'disabled'} onclick="W.issue()">${I('qr')} 안내지 만들기</button>
+          <button class="btn primary lg block" ${PH.verified ? '' : 'disabled'} onclick="W.issue()">${I('qr')} QR 만들기</button>
           ${PH.verified ? '' : '<div class="sub" style="text-align:center">본인 확인을 먼저 체크해 주세요</div>'}
         </div>
-        <div class="sticky print-target" id="paperCol">${PH.out ? paperHTML(PH.out) : `<div class="paper-empty">${I('printer', 'xl')}<div style="margin-top:12px;font-size:17px;font-weight:700;color:var(--text)">안내지 미리보기</div><div style="margin-top:6px">왼쪽을 채우고 '안내지 만들기'를 누르면<br>어르신께 드릴 QR 안내지가 여기에 나와요.</div></div>`}</div>
+        <div class="sticky print-target" id="paperCol">${PH.out ? (PH.output === 'print' ? paperHTML(PH.out) : screenHTML(PH.out)) : `<div class="paper-empty">${I(PH.output === 'print' ? 'printer' : 'monitor', 'xl')}<div style="margin-top:12px;font-size:17px;font-weight:700;color:var(--text)">${PH.output === 'print' ? '안내지 미리보기' : '화면 QR'}</div><div style="margin-top:6px">왼쪽을 채우고 'QR 만들기'를 누르면<br>${PH.output === 'print' ? '어르신께 드릴 안내지가' : '어르신 휴대폰으로 찍을 QR이'} 여기에 나와요.</div></div>`}</div>
       </div>`;
   }
   A.phSub = (s) => { PH.sub = s; render(); };
   A.ph = (k, v) => { PH[k] = v; PH.out = null; render(); };
   A.phItem = (i, k, v) => { PH.items[i][k] = v; PH.out = null; render(); };
   A.phDel = (i) => { PH.items.splice(i, 1); PH.out = null; render(); };
-  A.phAdd = () => { PH.items.splice(PH.items.filter((x) => x.isNew).length, 0, { drug: 'aspirin', freq: 'qd_am', days: 30, vis: MP.DEFAULT_VIS, isNew: true }); PH.out = null; render(); };
+  A.phAdd = () => { PH.items.splice(PH.items.filter((x) => x.isNew).length, 0, { drug: 'aspirin', freq: 'qd_am', days: 30, ...MP.newMedShare(), isNew: true }); PH.out = null; render(); };
+  A.phSh = (k, v) => { PH.sharing[k] = v; PH.out = null; render(); };
   A.phG = (k, v) => { PH.guardian[k] = v; PH.out = null; render(); };
-  A.phGType = (t) => { PH.guardian.type = t; if (t === 'care') { PH.guardian.name = '박○○ 간호사'; PH.guardian.rel = '○○구 보건소 방문간호'; } else { PH.guardian.name = '김민수'; PH.guardian.rel = '아들'; } PH.out = null; render(); };
-  A.phS = (k, v) => { PH.sticker[k] = v; PH.out = null; render(); };
+  A.phGType = (t) => { const g = PH.guardian; g.type = t; if (t === 'care') { g.name = '박○○ 간호사'; g.rel = '○○구 보건소 방문간호'; g.phone = '010-5555-0199'; } else { g.name = '김민수'; g.rel = '아들'; g.phone = '010-9876-5432'; } PH.out = null; render(); };
+  A.phOut = (o) => { PH.output = o; render(); };
 
   A.issue = async () => {
     const e = MP.getPersona('elder');
+    const g0 = PH.guardian;
+    if (g0.on && MP.normPhone(g0.phone).length < 10) return MP.toast('보호자 휴대폰 번호를 확인해 주세요');
     const now = Math.floor(Date.now() / 1000);
     const newItems = PH.items.filter((x) => x.isNew);
     const rid = 'R-' + MP.rid(6);
-    // 이 처방을 반영한 환자 상태(약국 기준 스냅샷)
-    const snap = { ...e, meds: PH.items.map((it, i) => ({ id: 'p' + i, drug: it.drug, freq: it.freq, days: it.days, start: it.isNew ? PH.date : MP.today(), vis: it.vis })), emergencyContact: e.emergencyContact };
-    const out = { rid, date: PH.date, org: PH.org, newItems, sticker: PH.sticker.on ? { ...PH.sticker } : null, guardian: PH.guardian.on ? { ...PH.guardian } : null };
+    // 이 처방과 공유 설정을 반영한 환자 상태 (약국 기준 스냅샷)
+    const snap = { ...e, sharing: { ...PH.sharing }, meds: PH.items.map((it, i) => ({ id: 'p' + i, drug: it.drug, freq: it.freq, days: it.days, start: it.isNew ? PH.date : MP.today(), share: it.share, inStatus: it.inStatus })) };
+    const out = { rid, date: PH.date, org: PH.org, newItems, guardian: g0.on ? { ...g0 } : null };
     let g = null;
-    if (PH.guardian.on) g = { id: 'G-' + MP.rid(6), name: PH.guardian.name, rel: PH.guardian.rel, type: PH.guardian.type, perms: { status: PH.guardian.status, emergencyQR: PH.guardian.emergencyQR } };
-    const stickerOpts = { allergy: PH.sticker.allergy, contact: PH.sticker.contact, meds: PH.sticker.meds };
-    const sid = 'E-' + MP.rid(6);
+    if (g0.on) g = { id: 'G-' + MP.rid(6), name: g0.name, rel: g0.rel, type: g0.type, phone: MP.maskPhone(g0.phone), perms: { status: g0.status, detail: g0.detail, emergencyQR: g0.emergencyQR } };
     try {
-      out.R = await MP.encode('R', { v: 1, rid, iat: now, ph: ORG.pharmacy, org: PH.org, date: PH.date, pid: e.pid, n: e.name, items: PH.items.map((x) => [x.drug, x.freq, x.days, x.vis, x.isNew ? 1 : 0]), g, eo: PH.sticker.on ? stickerOpts : undefined });
-      if (PH.sticker.on) out.E = await MP.encode('E', MP.buildEmergencyPayload(snap, stickerOpts, sid));
+      out.R = await MP.encode('R', { v: 1, rid, iat: now, ph: ORG.pharmacy, org: PH.org, date: PH.date, pid: e.pid, n: e.name, sh: { ...PH.sharing },
+        items: PH.items.map((x) => [x.drug, x.freq, x.days, x.share ? 1 : 0, x.inStatus ? 1 : 0, x.isNew ? 1 : 0]), g });
       if (g) {
-        const gp = MP.buildGuardianPayload(snap, g); gp.s = e.sex;
-        if (g.perms.emergencyQR) gp.eq = out.E || await MP.encode('E', MP.buildEmergencyPayload(snap, e.emergencyOpts, sid));
-        out.G = await MP.encode('G', gp); out.gid = g.id;
+        const gp = MP.buildGuardianPayload(snap, { ...g, phone: g0.phone }, await MP.phoneHash(g0.phone));
+        if (g.perms.emergencyQR) gp.eq = await MP.encode('E', MP.buildEmergencyPayload(snap, e.emergencyOpts, e.emerSid || 'E-' + MP.rid(6)));
+        out.G = await MP.encode('G', gp); out.gid = g.id; out.gphone = g.phone;
       }
     } catch (err) { MP.toast('https 주소에서 열어야 QR을 만들 수 있어요'); return; }
-    out.sid = sid;
-    MP.addIssued({ id: rid, type: 'R', pid: e.pid, name: e.name.slice(0, 1) + '○○' });
-    if (out.G) MP.addIssued({ id: g.id, type: 'G', pid: e.pid, name: e.name.slice(0, 1) + '○○', exp: Date.now() + 24 * 3600e3 });
-    if (out.E) MP.addIssued({ id: sid, type: 'E', pid: e.pid, name: e.name.slice(0, 1) + '○○' });
-    MP.save('mp.lastPharmacy', { R: out.R, G: out.G || null, E: out.E || null, ts: Date.now() });
-    MP.addAudit({ who: `[약사] ${ORG.pharmacy}`, role: '약사', pid: e.pid, action: '처방 등록 QR 발급', path: '약국 발급', result: '허용', ip: '10.0.31.7' });
+    MP.addIssued({ id: rid, type: 'R', pid: e.pid, name: e.name.slice(0, 1) + '○○', exp: Date.now() + 7 * 864e5 });
+    if (out.G) MP.addIssued({ id: g.id, type: 'G', pid: e.pid, name: e.name.slice(0, 1) + '○○', exp: Date.now() + 24 * 3600e3, phone: g.phone });
+    MP.save(MP.KEY.lastPharmacy, { R: out.R, G: out.G || null, ts: Date.now() });
+    MP.addAudit({ who: `[약사] ${ORG.pharmacy}`, role: '약사', pid: e.pid, action: out.G ? '처방 등록 · 보호자 연결 QR 발급' : '처방 등록 QR 발급', path: '약국 발급', result: '허용', ip: '10.0.31.7' });
     PH.out = out;
     render();
-    MP.toast('안내지를 만들었어요. 인쇄하거나 화면을 그대로 보여주세요.');
+    MP.toast(PH.output === 'print' ? '안내지를 만들었어요. 인쇄해서 드리세요.' : 'QR을 만들었어요. 어르신 휴대폰으로 화면을 찍게 도와주세요.');
   };
 
   function paperHTML(o) {
     const e = MP.getPersona('elder');
-    const incl = o.sticker ? [o.sticker.allergy && '알레르기', o.sticker.contact && '보호자 연락처', o.sticker.meds && '복용 약·기저질환'].filter(Boolean) : [];
     return `<div class="row noprint" style="justify-content:flex-end;margin-bottom:10px;gap:8px"><button class="btn sm" onclick="W.phReset()">새 처방</button><button class="btn sm primary" onclick="window.print()">${I('printer')} 인쇄</button></div>
       <div class="paper">
         <div class="ph"><div><div style="font-size:13px;color:#666">약 여권 안내지</div><h2>${esc(e.name)} 님</h2></div><div style="text-align:right;font-size:13px;color:#555">${ORG.pharmacy}<br>${o.date} · ${esc(o.org)}</div></div>
         <div class="blk"><div class="qr-box">${MP.qrSVG(o.R)}</div>
           <div><div class="big"><span class="num">1</span>내 휴대폰에 약 등록</div>
-          <div class="how">약 여권 앱 → <b>'약 등록'</b> → <b>'약국에서 받은 QR 찍기'</b><br>이번에 받은 약: ${o.newItems.map((x) => `<b>${MP.drugName(x.drug)}</b>`).join(', ') || '없음'}</div></div></div>
+          <div class="how">약 여권 앱 → <b>'약 등록'</b> → <b>'약국에서 받은 QR 찍기'</b><br>이번에 받은 약: ${o.newItems.map((x) => `<b>${MP.drugName(x.drug)}</b>`).join(', ') || '없음'}<br><span style="color:#666;font-size:15px">본인 휴대폰에서 한 번만 등록돼요</span></div></div></div>
         ${o.G ? `<div class="blk"><div class="qr-box">${MP.qrSVG(o.G)}</div>
-          <div><div class="big"><span class="num">2</span>${o.guardian.type === 'care' ? '돌봄 담당자' : '보호자'} 연결 (${esc(o.guardian.name)})</div>
-          <div class="how">${o.guardian.type === 'care' ? '담당자' : '보호자'} 휴대폰의 약 여권 앱 → <b>'가족'</b> → <b>'보호자 연결 QR 찍기'</b><br><span style="color:#8A3A1C">1회용 · 24시간 안에 찍어 주세요</span></div></div></div>` : ''}
-        ${o.E ? `<div class="cut"><span>✂ 잘라서 약수첩·지갑에 붙이세요</span></div>
-          <div class="sticker"><div class="qr-box">${MP.qrSVG(o.E)}</div>
-            <div><div style="color:var(--danger);font-weight:800;font-size:16px">⚠ 응급 의료 정보 QR</div><div style="font-weight:700;margin-top:4px">${esc(e.name)} · ${e.birth}</div>
-            <div style="font-size:12px;color:#555;margin-top:4px">의료진 단말에서만 열림 · 인터넷 없이 확인<br>포함: ${incl.join(', ') || '기본 정보만'}</div><div class="mono" style="font-size:11px;color:#888;margin-top:4px">${o.sid}</div></div></div>` : ''}
+          <div><div class="big"><span class="num">2</span>${o.guardian.type === 'care' ? '돌봄 담당자' : '보호자'} 연결 · ${esc(o.guardian.name)}</div>
+          <div class="how">${o.guardian.type === 'care' ? '담당자' : '보호자'} 휴대폰의 약 여권 앱 → <b>'가족'</b> → <b>'보호자 연결 QR 찍기'</b><br><span style="color:#8A3A1C"><b>${esc(o.gphone)}</b> 휴대폰에서만 · 1회용 · 24시간 안에</span></div></div></div>` : ''}
+        <div style="font-size:13px;color:#666;margin-top:16px;line-height:1.6">· 응급 정보는 약 여권 앱의 <b>'응급 QR'</b>로 보여주세요.<br>· 안내지를 잃어버리면 ${ORG.pharmacy}에 알려주세요. 남은 QR을 바로 취소해 드려요.</div>
       </div>
-      <div class="sub noprint" style="margin-top:10px">발급 ID ${o.rid}${o.gid ? ` · ${o.gid}` : ''}${o.sid && o.E ? ` · ${o.sid}` : ''} — 발급 현황에서 확인·무효화할 수 있어요.</div>`;
+      <div class="sub noprint" style="margin-top:10px">발급 ID ${o.rid}${o.gid ? ` · ${o.gid}` : ''} — 발급 현황에서 확인·취소할 수 있어요.</div>`;
+  }
+  function screenHTML(o) {
+    return `<div class="row" style="justify-content:flex-end;margin-bottom:10px"><button class="btn sm" onclick="W.phReset()">새 처방</button></div>
+      <div class="stack">
+        <div class="card" style="text-align:center;padding:26px"><div class="big" style="font-size:22px;font-weight:800"><span class="chip primary" style="font-size:15px">①</span> 어르신 휴대폰으로 찍어 주세요</div>
+          <div class="sub" style="margin-top:4px">약 여권 앱 → 약 등록 → 약국에서 받은 QR 찍기</div>
+          <div class="qr-box" style="width:300px;margin-top:16px">${MP.qrSVG(o.R)}</div></div>
+        ${o.G ? `<div class="card" style="text-align:center;padding:26px"><div class="big" style="font-size:22px;font-weight:800"><span class="chip primary" style="font-size:15px">②</span> ${esc(o.guardian.name)} 님 휴대폰으로 찍어 주세요</div>
+          <div class="sub" style="margin-top:4px">약 여권 앱 → 가족 → 보호자 연결 QR 찍기 · <b>${esc(o.gphone)}</b> 전용 · 1회용</div>
+          <div class="qr-box" style="width:300px;margin-top:16px">${MP.qrSVG(o.G)}</div></div>` : ''}
+        <div class="alert info">${I('lock')}<span>화면 QR은 종이가 남지 않아요. 등록이 끝나면 '새 처방'을 눌러 화면을 지워 주세요.</span></div>
+      </div>`;
   }
   A.phReset = () => { PH = freshPH(); render(); };
 
   function issuedList() {
     const list = MP.getIssued(), rev = MP.getRevoked(), now = Date.now();
     const status = (x) => {
-      if (rev.has(x.id)) return '<span class="res-no">무효화됨</span>';
-      if (x.type === 'G') return x.exp && x.exp < now ? '<span class="chip">만료</span>' : `<span class="res-ok">유효 · ${Math.max(0, Math.round((x.exp - now) / 3600e3))}시간 남음</span>`;
-      return x.type === 'E' ? '<span class="res-ok">유효</span>' : '<span class="chip">발급됨</span>';
+      if (rev.has(x.id)) return '<span class="res-no">취소됨</span>';
+      if (x.status === 'used') return '<span class="chip ok">사용됨</span>';
+      if (x.exp && x.exp < now) return '<span class="chip">만료</span>';
+      if (x.type === 'G') return `<span class="res-ok">유효 · ${Math.max(0, Math.round((x.exp - now) / 3600e3))}시간 남음</span>`;
+      return '<span class="res-ok">미사용</span>';
     };
+    const cancellable = (x) => !rev.has(x.id) && x.status !== 'used' && !(x.exp && x.exp < now);
     return `<div class="card" style="padding:0;overflow:hidden">
-      <div class="between" style="padding:20px 24px"><div><h3 class="h-sec" style="margin:0">${ORG.pharmacy} 발급 현황</h3><div class="sub">응급 QR 스티커를 잃어버렸다면 여기서 무효화하세요. 무효화된 스티커는 의료진 단말에서 열리지 않아요.</div></div><span class="sub">${list.length}건</span></div>
-      <table class="tbl"><thead><tr><th>발급 ID</th><th>종류</th><th>환자</th><th>발급 시각</th><th>상태</th><th>비고</th><th></th></tr></thead><tbody>
-      ${list.map((x) => `<tr class="${rev.has(x.id) ? 'hl' : ''}"><td class="mono">${x.id}</td><td>${MP.TYPE_LABEL[x.type]}</td><td><span class="mono">${x.pid}</span> ${esc(x.name || '')}</td><td class="mono">${MP.dateStr(x.ts)} ${MP.hhmm(x.ts)}</td><td>${status(x)}</td><td class="sub">${esc(x.note || '')}</td>
-        <td>${x.type === 'E' && !rev.has(x.id) ? `<button class="btn sm danger" onclick="W.revokeAsk('${x.id}')">무효화</button>` : ''}</td></tr>`).join('')}
-      </tbody></table></div>`;
+      <div class="between" style="padding:20px 24px"><div><h3 class="h-sec" style="margin:0">${ORG.pharmacy} 발급 현황</h3><div class="sub">안내지를 잃어버렸다면 아직 쓰지 않은 QR을 여기서 취소하세요. 취소된 QR은 앱에서 등록·연결되지 않아요.</div></div><span class="sub">${list.length}건</span></div>
+      <table class="tbl"><thead><tr><th>발급 ID</th><th>종류</th><th>환자</th><th>보호자 번호</th><th>발급 시각</th><th>상태</th><th>비고</th><th></th></tr></thead><tbody>
+      ${list.map((x) => `<tr class="${rev.has(x.id) ? 'hl' : ''}"><td class="mono">${x.id}</td><td>${MP.TYPE_LABEL[x.type]}</td><td><span class="mono">${x.pid}</span> ${esc(x.name || '')}</td><td class="mono muted">${esc(x.phone || '—')}</td><td class="mono">${MP.dateStr(x.ts)} ${MP.hhmm(x.ts)}</td><td>${status(x)}</td><td class="sub">${esc(x.note || '')}</td>
+        <td>${cancellable(x) ? `<button class="btn sm danger" onclick="W.revokeAsk('${x.id}')">취소</button>` : ''}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="sub" style="margin-top:12px">${I('lock')} 응급 QR 스티커는 후속 검토 과제예요 (최소 항목, 기준일, 약 변경 시 교체, 오프라인 복호화 키 관리).</div>`;
   }
-  A.revokeAsk = (id) => modal(`<h3 style="margin-top:0">응급 QR ${id}를 무효화할까요?</h3>
-    <label class="field"><span>사유</span><select class="input" id="rvReason"><option>분실 신고</option><option>재발급</option><option>환자 요청</option></select></label>
-    <p class="sub">무효화 목록은 의료진 단말에 주기적으로 동기화돼요. 무효화 후에는 되돌릴 수 없어요.</p>
-    <div class="row" style="margin-top:14px"><button class="btn grow" onclick="W.closeModal()">취소</button><button class="btn primary grow" style="background:var(--danger);border-color:var(--danger)" onclick="W.revoke('${id}')">무효화</button></div>`);
+  A.revokeAsk = (id) => modal(`<h3 style="margin-top:0">${id}를 취소할까요?</h3>
+    <label class="field"><span>사유</span><select class="input" id="rvReason"><option>안내지 분실</option><option>보호자 변경</option><option>환자 요청</option></select></label>
+    <p class="sub">취소하면 이 QR로는 등록·연결할 수 없어요. 되돌릴 수 없어요.</p>
+    <div class="row" style="margin-top:14px"><button class="btn grow" onclick="W.closeModal()">닫기</button><button class="btn primary grow" style="background:var(--danger);border-color:var(--danger)" onclick="W.revoke('${id}')">QR 취소</button></div>`);
   A.revoke = (id) => {
     const reason = document.getElementById('rvReason').value;
-    MP.revoke(id);
+    MP.revoke(id, reason);
     const x = MP.getIssued().find((r) => r.id === id);
-    MP.addAudit({ who: `[약사] ${ORG.pharmacy}`, role: '약사', pid: x?.pid || '—', action: `응급 QR 무효화 (${reason})`, path: '약국 발급', result: '허용', ip: '10.0.31.7' });
-    if (x) notifyPatient(x.pid, `${ORG.pharmacy}에서 응급 QR(${id})을 무효화했어요 · ${reason}`);
-    A.closeModal(); render(); MP.toast('무효화했어요');
+    MP.addAudit({ who: `[약사] ${ORG.pharmacy}`, role: '약사', pid: x?.pid || '—', action: `${MP.TYPE_LABEL[x?.type] || 'QR'} 취소 (${reason})`, path: '약국 발급', result: '허용', ip: '10.0.31.7' });
+    if (x) notifyPatient(x.pid, `${ORG.pharmacy}에서 ${MP.TYPE_LABEL[x.type]}(${id})을 취소했어요 · ${reason}`);
+    A.closeModal(); render(); MP.toast('취소했어요');
   };
 
   /* ================================================================
@@ -249,7 +266,6 @@
           <button class="btn sm" onclick="W.sample('live')">정상 실시간 QR</button>
           <button class="btn sm" onclick="W.sample('expired')">5분 지난 QR</button>
           <button class="btn sm" onclick="W.sample('emer')">응급 QR</button>
-          <button class="btn sm" onclick="W.sample('revoked')">무효화된 스티커</button>
           <button class="btn sm" onclick="W.sample('tamper')">위조된 코드</button>
         </div>
         <div class="row" style="margin-top:12px"><input class="input mono grow" id="paste" placeholder="MP1.D.… 코드를 붙여넣고 Enter" onkeydown="if(event.key==='Enter')W.scan(this.value,'붙여넣기')"><button class="btn" onclick="W.scan(document.getElementById('paste').value,'붙여넣기')">확인</button></div>
@@ -311,7 +327,6 @@
       return render();
     }
     if (r.type === 'E') {
-      if (MP.getRevoked().has(d.sid)) return reject({ title: '무효화된 응급 QR이에요', short: '무효화된 스티커', action: '응급 정보 열람', desc: `이 스티커(${d.sid})는 분실 등의 이유로 약국에서 무효화했어요.`, how: '환자 본인 확인 후 앱의 응급 QR이나 실시간 QR을 요청하세요.' }, d.p.id, '응급 QR', `${d.p.n} · 응급 QR`);
       MP.addAudit({ ...base, who: `[의료진] ${ORG.clinic}`, pid: d.p.id, action: '응급 정보 열람', path: '응급 QR', result: '허용', ip: '단말 로컬' });
       notifyPatient(d.p.id, `${ORG.clinic}에서 응급 정보를 열람했어요`, { who: ORG.clinic, role: '의료진', action: '응급 정보 열람', path: '응급 QR', result: '허용' });
       CL.view = 'emer'; CL.data = d; CL.ts = Date.now();
@@ -342,10 +357,6 @@
     if (k === 'live') return A.scan(await MP.encode('D', MP.buildClinicalPayload(e)), '샘플');
     if (k === 'expired') return A.scan(await MP.encode('D', MP.buildClinicalPayload(e, { ageSec: 420 })), '샘플');
     if (k === 'emer') return A.scan(await MP.encode('E', MP.buildEmergencyPayload(e, e.emergencyOpts, e.emerSid || 'E-DEMO01')), '샘플');
-    if (k === 'revoked') {
-      const other = { pid: 'PT-002981', name: '박순자', sex: '여', birth: '1945-09-02', blood: 'B+', allergies: ['nsaid'], conditions: ['htn'], meds: [{ drug: 'amlodipine' }], emergencyContact: null };
-      return A.scan(await MP.encode('E', MP.buildEmergencyPayload(other, { allergy: true, meds: true, contact: false }, 'E-7Q2KD9')), '샘플');
-    }
     if (k === 'tamper') { const c = await MP.encode('D', MP.buildClinicalPayload(e)); return A.scan(c.slice(0, 30) + (c[30] === 'A' ? 'B' : 'A') + c.slice(31), '샘플'); }
   };
 
@@ -399,7 +410,7 @@
   function clinicEmer() {
     const d = CL.data;
     const NI = '<span class="notincl">환자가 포함하지 않음</span>';
-    return `<div class="emer-head">${I('tri', 'xl')}<div><div style="font-size:14px;opacity:.85">응급 QR · 인터넷 없이 단말에서 복호화</div><div style="font-size:28px;font-weight:800">${esc(d.p.n)} <span style="font-size:18px;font-weight:500">${d.p.s} · ${MP.age(d.p.b)}세 · ${d.p.b}</span></div></div><span class="sp" style="flex:1"></span><button class="btn" style="color:var(--text)" onclick="W.again()">${I('scan')} 다시 스캔</button></div>
+    return `<div class="emer-head">${I('tri', 'xl')}<div><div style="font-size:14px;opacity:.85">응급 QR · 인터넷 없이 단말에서 복호화 · 기준 ${MP.dateStr(d.iat * 1000)} ${MP.hhmm(d.iat * 1000)}</div><div style="font-size:28px;font-weight:800">${esc(d.p.n)} <span style="font-size:18px;font-weight:500">${d.p.s} · ${MP.age(d.p.b)}세 · ${d.p.b}</span></div></div><span class="sp" style="flex:1"></span><button class="btn" style="color:var(--text)" onclick="W.again()">${I('scan')} 다시 스캔</button></div>
       <div class="emer-grid">
         <div class="card" style="border-color:var(--danger-line)"><h4>알레르기 · 금기</h4><div class="big" style="color:var(--danger)">${d.al ? (d.al.map((a) => MP.ALLERGY[a].ko).join(' · ') || '없음') : NI}</div></div>
         <div class="card"><h4>혈액형</h4><div class="big">${d.p.bt}</div></div>
@@ -407,7 +418,7 @@
         <div class="card"><h4>기저질환</h4><div style="font-size:18px;font-weight:700">${d.c ? d.c.map((c) => MP.COND[c].ko).join(' · ') : NI}</div>
           <h4 style="margin-top:18px">응급 연락처</h4><div style="font-size:18px;font-weight:700">${d.ec ? `${esc(d.ec[0])} (${esc(d.ec[1])}) <span class="mono">${esc(d.ec[2])}</span>` : NI}</div></div>
       </div>
-      <div class="alert info" style="margin-top:18px">${I('lock')}<span>응급 QR은 생명과 직결된 최소 정보만 담고 있어요 (발급 ID <span class="mono">${d.sid}</span>). 자세한 처방은 환자의 실시간 QR로 확인하세요.</span></div>`;
+      <div class="alert info" style="margin-top:18px">${I('lock')}<span>응급 QR은 환자가 고른 최소 정보만 담고 있어요 (기준 <span class="mono">${MP.dateStr(d.iat * 1000)} ${MP.hhmm(d.iat * 1000)}</span> · 앱에서 약이 바뀌면 자동으로 새로 만들어짐). 자세한 처방은 환자의 실시간 QR로 확인하세요.</span></div>`;
   }
 
   function clinicReject() {

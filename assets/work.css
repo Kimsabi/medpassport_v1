@@ -20,7 +20,7 @@ body.work { min-width: 1100px; }
 .kv2 > span:nth-child(odd) { color: var(--muted); }
 
 /* 약국 */
-.medrow { display: grid; grid-template-columns: 1.6fr 1.3fr 70px 1.3fr 34px; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-2); }
+.medrow { display: grid; grid-template-columns: 1.7fr 1.3fr 64px 78px 78px 30px; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-2); }
 .medrow.head { font-size: 12px; color: var(--muted); font-weight: 600; padding-top: 0; }
 .medrow .input { padding: 8px 10px; border-radius: 10px; font-size: 14px; }
 .medrow .x { border: 0; background: none; color: var(--faint); padding: 4px; }
@@ -36,8 +36,6 @@ body.work { min-width: 1100px; }
 .paper .how { font-size: 17px; line-height: 1.6; margin-top: 6px; }
 .paper .cut { border-top: 2px dashed #999; margin: 22px -38px 0; position: relative; }
 .paper .cut span { position: absolute; top: -11px; left: 30px; background: #fff; padding: 0 8px; font-size: 12px; color: #777; }
-.sticker { margin-top: 24px; border: 2px solid var(--danger); border-radius: 14px; padding: 14px; display: grid; grid-template-columns: 120px 1fr; gap: 14px; align-items: center; width: 380px; }
-.sticker .qr-box { border: 0; padding: 0; width: 120px; }
 .paper-empty { border: 2px dashed var(--line); border-radius: 16px; min-height: 520px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 30px; }
 
 /* 진료 */

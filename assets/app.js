@@ -64,7 +64,7 @@
   }
 
   /* ---------------- 복약 계산 ---------------- */
-  function medDue(m) { return m.freq === 'qw_am' ? MP.daysBetween(m.start, MP.today()) % 7 === 0 : true; }
+  const medDue = MP.medDue;
   function slotGroups(p) {
     const map = {};
     p.meds.filter(medDue).forEach((m) => MP.FREQ[m.freq].slots.forEach((s) => (map[s] = map[s] || []).push(m)));
@@ -242,7 +242,7 @@
           ${[['allergy', '알레르기'], ['contact', `보호자 연락처 (${esc(P.emergencyContact?.name || '')} · ${esc(P.emergencyContact?.rel || '')})`], ['meds', '복용 약 · 기저질환']].map(([k, t]) => `
             <label class="permrow"><span>${t}</span><span class="toggle"><input type="checkbox" ${o[k] ? 'checked' : ''} onchange="A.emerOpt('${k}',this.checked)"><span></span></span></label>`).join('')}
         </div>
-        <div class="notice">${I('lock')}<span>약국에서 받은 응급 스티커와 같은 역할이에요. 잃어버리면 약국에서 무효화할 수 있어요.</span></div>
+        <div class="notice">${I('lock')}<span>기준 <b class="mono">${MP.today()} ${MP.hhmm(Date.now())}</b> · 약이나 정보가 바뀌면 자동으로 새 QR이 만들어져요. 인터넷 없이 의료진 단말에서만 열려요.</span></div>
       </div>`;
   };
   A.qrKind = (k) => { S.params = { ...S.params, kind: k }; render(); };
@@ -315,7 +315,7 @@
           <b>처방 정보</b>
           <div class="kv" style="grid-template-columns:70px 1fr"><span>처방일</span><span>${m.start} · ${m.days}일분</span><span>의료기관</span><span>${esc(rx.org || '-')}</span><span>등록 방법</span><span>${esc(rx.via || '-')}</span></div>
         </div>
-        ${WHO === 'elder' ? `<button class="card between" style="width:100%;text-align:left" onclick="A.tab('guardians')"><span><b>보호자 공개</b><br><span class="muted" style="font-size:14px">${MP.VIS[m.vis || 'status'].label}</span></span>${I('eye')}</button>` : ''}
+        ${WHO === 'elder' ? `<button class="card between" style="width:100%;text-align:left" onclick="A.tab('guardians')"><span><b>보호자 공유</b><br><span class="muted" style="font-size:14px">① 복약 현황 ${m.inStatus !== false ? '포함' : '제외'} · ② 약 상세 ${m.share ? '공유' : '비공유'}</span></span>${I('eye')}</button>` : ''}
       </div>`;
   };
 
@@ -349,24 +349,24 @@
   };
   A.scanFile = async (f) => { if (!f) return; const t = await MP.decodeImageFile(f); if (!t) return MP.toast('사진에서 QR을 찾지 못했어요'); handleScan(t, S.params.expect); };
   A.useSample = async (expect) => {
-    const last = MP.load('mp.lastPharmacy', {});
+    const last = MP.load(MP.KEY.lastPharmacy, {});
     if (expect === 'R') {
       if (last.R) return handleScan(last.R, 'R');
       const elder = MP.getPersona('elder');
-      const code = await MP.encode('R', { v: 1, rid: 'R-' + MP.rid(6), iat: Math.floor(Date.now() / 1000), ph: '온누리약국', org: '행복내과의원', date: MP.today(), pid: elder.pid, n: elder.name,
-        items: [['atorvastatin', 'qd_pm', 30, 'status', 1], ...elder.meds.map((m) => [m.drug, m.freq, m.days, m.vis || 'status', 0])] });
+      const code = await MP.encode('R', { v: 1, rid: 'R-' + MP.rid(6), iat: Math.floor(Date.now() / 1000), ph: '온누리약국', org: '행복내과의원', date: MP.today(), pid: elder.pid, n: elder.name, sh: elder.sharing,
+        items: [['atorvastatin', 'qd_pm', 30, 0, 1, 1], ...elder.meds.map((m) => [m.drug, m.freq, m.days, m.share ? 1 : 0, m.inStatus === false ? 0 : 1, 0])] });
       return handleScan(code, 'R');
     }
-    if (last.G) return handleScan(last.G, 'G');
-    const shown = MP.load('mp.lastInvite', null);
-    if (shown) return handleScan(shown, 'G');
+    const inv = MP.load(MP.KEY.lastInvite, null);
+    const pick = [last.G && { c: last.G, t: last.ts || 0 }, inv && { c: inv.code, t: inv.ts || 0 }].filter(Boolean).sort((a, b) => b.t - a.t)[0];
+    if (pick) return handleScan(pick.c, 'G');
     MP.toast('먼저 어르신 앱(보호자 탭)이나 약국 화면에서 보호자 연결 QR을 만들어 주세요', 3500);
   };
 
   async function handleScan(text, expect) {
     const r = await MP.decode(text);
     const box = document.getElementById('scanres');
-    const fail = (msg) => { if (box) box.innerHTML = `<div class="alert">${I('alert')}<span>${msg}</span></div>`; MP.toast(msg); setTimeout(() => S.screen === 'scan' && render(), 2500); };
+    const fail = (msg) => { if (box) box.innerHTML = `<div class="alert">${I('alert')}<span>${msg}</span></div>`; MP.toast(msg, 3200); setTimeout(() => S.screen === 'scan' && render(), 3000); };
     if (!r.ok) return fail(r.reason === 'insecure' ? 'https 주소에서 열어주세요' : r.reason === 'tamper' ? '훼손되었거나 위조된 QR이에요' : '약 여권 QR이 아니에요');
     if (r.type !== expect) return fail(`이건 ${MP.TYPE_LABEL[r.type]}이에요. ${MP.TYPE_LABEL[expect]}을 찍어 주세요.`);
     if (expect === 'R') return importRx(r.data, fail);
@@ -374,37 +374,52 @@
   }
 
   function importRx(d, fail) {
+    if (WHO !== 'elder' && d.pid !== P.pid) return fail('처방 등록 QR은 환자 본인 휴대폰에서 찍어 주세요');
     if (d.pid !== P.pid) return fail(`다른 분(${d.n.slice(0, 1)}○○)의 처방이에요`);
     P.importedRx = P.importedRx || [];
-    if (P.importedRx.includes(d.rid)) return fail('이미 등록된 처방이에요');
+    if (P.importedRx.includes(d.rid)) return fail('이미 등록한 처방이에요 (1회용 QR)');
     const rxId = 'rx' + MP.rid(4);
     const added = [];
-    d.items.forEach(([drug, freq, days, vis, isNew]) => {
+    d.items.forEach(([drug, freq, days, share, inStatus, isNew]) => {
       const ex = P.meds.find((m) => m.drug === drug);
-      if (ex) { ex.vis = vis; if (isNew) { ex.start = d.date; ex.days = days; ex.freq = freq; ex.rx = rxId; added.push(drug); } }
-      else if (isNew) { P.meds.push({ id: 'm' + MP.rid(4), drug, freq, days, start: d.date, rx: rxId, vis }); added.push(drug); }
+      if (ex) { ex.share = !!share; ex.inStatus = !!inStatus; if (isNew) { ex.start = d.date; ex.days = days; ex.freq = freq; ex.rx = rxId; added.push(drug); } }
+      else if (isNew) { P.meds.push({ id: 'm' + MP.rid(4), drug, freq, days, start: d.date, rx: rxId, share: !!share, inStatus: !!inStatus }); added.push(drug); }
     });
-    if (d.al) d.al.forEach((a) => { if (!P.allergies.includes(a)) P.allergies.push(a); });
+    if (d.sh) P.sharing = d.sh;
     P.rx.unshift({ id: rxId, org: d.org, pharmacy: d.ph, date: d.date, count: added.length, via: '약국 QR' });
     if (d.g && !P.guardians.find((g) => g.id === d.g.id)) P.guardians.push({ ...d.g, status: 'active', since: MP.today(), via: '약국 등록' });
-    if (d.eo) P.emergencyOpts = d.eo;
     P.importedRx.push(d.rid);
     P.accessLog.push({ ts: Date.now(), who: d.ph, role: '약사', action: '처방 등록', path: '약국 QR', result: '허용' });
     save();
-    S.stack = []; S.screen = 'done'; S.params = { title: `처방 ${added.length}건이 등록됐어요`, items: added.map(MP.drugName), sub: `${d.ph} · ${d.org} · ${d.date}${d.g ? ` · 보호자 ${d.g.name} 연결` : ''}` };
+    MP.markIssuedUsed(d.rid);
+    S.stack = []; S.screen = 'done'; S.params = { title: `처방 ${added.length}건이 등록됐어요`, items: added.map(MP.drugName), sub: `${d.ph} · ${d.org} · ${d.date}${d.g ? ` · 보호자 ${d.g.name} 등록` : ''}` };
     render(true);
     if (isEasy() && P.settings.voice) MP.speak(`약 ${added.length}개가 등록됐어요.`);
   }
 
-  function importLink(d, fail) {
+  async function importLink(d, fail) {
     if (WHO !== 'guardian') return fail('보호자 연결 QR은 보호자 휴대폰에서 찍어 주세요');
-    if (d.exp * 1000 < Date.now()) return fail('기간이 지난 연결 QR이에요 (24시간 유효)');
-    if (MP.load(MP.KEY.revokedLinks, []).includes(d.lid)) return fail('취소된 연결 QR이에요');
+    const deny = (reason) => { MP.addAudit({ who: `[보호자] ${P.pid}`, role: '보호자', pid: d.pid, action: '보호자 연결', path: '보호자 위임', result: '거부 · ' + reason, ip: '10.0.8.203' }); };
+    if (MP.load(MP.KEY.revokedLinks, []).includes(d.lid)) { deny('취소된 연결 QR'); return fail('약국이나 어르신이 취소한 연결 QR이에요'); }
+    if (MP.load(MP.KEY.usedLinks, []).includes(d.lid)) { deny('사용된 연결 QR'); return fail('이미 사용된 연결 QR이에요 (1회용)'); }
+    if (d.exp * 1000 < Date.now()) { deny('만료된 연결 QR'); return fail('기간이 지난 연결 QR이에요 (24시간 유효)'); }
+    const mine = await MP.phoneHash(P.phone);
+    if (d.gph !== mine) { deny('지정 보호자 불일치'); return fail(`이 QR은 ${esc(d.gn)} 님(${esc(d.gpm)}) 전용이에요. 다른 휴대폰에서는 연결할 수 없어요.`); }
     P.linked = P.linked || [];
-    if (P.linked.find((l) => l.lid === d.lid || l.pid === d.pid)) return fail('이미 연결된 분이에요');
+    if (P.linked.find((l) => l.pid === d.pid)) return fail('이미 연결된 분이에요');
     const label = d.gt === 'care' ? '돌봄 대상' : ['아들', '딸', '자녀'].includes(d.rel) ? (d.s === '남' ? '아버지' : '어머니') : '가족';
-    P.linked.push({ lid: d.lid, pid: d.pid, name: d.n, birth: d.b, s: d.s, label, rel: d.rel, gt: d.gt, perm: d.perm, meds: d.meds, eq: d.eq || null, since: MP.today(), snapAt: d.iat * 1000 });
+    P.linked.push({ lid: d.lid, pid: d.pid, name: d.n, birth: d.b, s: d.s, label, rel: d.rel, gt: d.gt, perm: d.perm, st: d.st, dm: d.dm || [], eq: d.eq || null, since: MP.today(), snapAt: d.iat * 1000 });
     save();
+    const ul = MP.load(MP.KEY.usedLinks, []); ul.push(d.lid); MP.save(MP.KEY.usedLinks, ul);
+    MP.markIssuedUsed(d.lid);
+    MP.addAudit({ who: `[보호자] ${P.pid}`, role: '보호자', pid: d.pid, action: '보호자 연결', path: '보호자 위임', result: '허용', ip: '10.0.8.203' });
+    const elder = MP.load(MP.KEY.elder, null);
+    if (elder && elder.pid === d.pid) {
+      elder.notifications = elder.notifications || [];
+      elder.notifications.push({ ts: Date.now(), text: `${d.rel} ${P.name} 님이 보호자로 연결됐어요. 원하지 않으면 보호자 탭에서 해지하세요.`, read: false });
+      elder.accessLog.push({ ts: Date.now(), who: `${P.name} (${d.rel})`, role: '보호자', action: '보호자 연결', path: '보호자 위임', result: '허용' });
+      MP.save(MP.KEY.elder, elder);
+    }
     S.stack = []; S.screen = 'home'; S.profile = d.lid; S._viewLogged = null;
     render(true);
     MP.toast(`${d.n} 님과 연결됐어요`);
@@ -415,7 +430,7 @@
       <div style="width:84px;height:84px;border-radius:50%;background:var(--ok-bg);color:var(--ok);display:flex;align-items:center;justify-content:center;margin:0 auto">${I('check', 'xl')}</div>
       <h2 style="font-size:24px;margin:20px 0 6px">${esc(title)}</h2>
       <div class="muted">${esc(sub || '')}</div>
-      <div class="card" style="text-align:left;margin-top:20px">${(items || []).map((t) => `<div class="row" style="padding:6px 0">${I('pill')}<b>${esc(t)}</b></div>`).join('') || '<span class="muted">새로 추가된 약은 없어요 (공개 범위만 갱신)</span>'}</div>
+      <div class="card" style="text-align:left;margin-top:20px">${(items || []).map((t) => `<div class="row" style="padding:6px 0">${I('pill')}<b>${esc(t)}</b></div>`).join('') || '<span class="muted">새로 추가된 약은 없어요 (공유 설정만 갱신)</span>'}</div>
       <button class="btn primary lg block" style="margin-top:20px" onclick="A.tab('home')">확인</button>
     </div>`;
 
@@ -485,45 +500,57 @@
     OCR_RESULT.items.forEach((it) => {
       const drug = it.drug || S.params.sel;
       if (P.meds.find((m) => m.drug === drug)) { skipped.push(drug); return; }
-      P.meds.push({ id: 'm' + MP.rid(4), drug, freq: it.freq, days: it.days, start: MP.today(), rx: rxId, vis: MP.DEFAULT_VIS });
+      P.meds.push({ id: 'm' + MP.rid(4), drug, freq: it.freq, days: it.days, start: MP.today(), rx: rxId, ...MP.newMedShare() });
       added.push(drug);
     });
     if (!P.conditions.includes('osteo')) P.conditions.push('osteo');
     if (added.length) P.rx.unshift({ id: rxId, org: OCR_RESULT.org, pharmacy: '-', date: MP.today(), count: added.length, via: '처방전 촬영' });
     save();
     S.stack = []; S.screen = 'done';
-    S.params = { title: added.length ? `약 ${added.length}개를 저장했어요` : '이미 모두 등록된 약이에요', items: added.map(MP.drugName), sub: `${OCR_RESULT.org} · 보호자 공개는 '복약 여부만'으로 시작해요${skipped.length ? ` · 중복 ${skipped.length}건 제외` : ''}` };
+    S.params = { title: added.length ? `약 ${added.length}개를 저장했어요` : '이미 모두 등록된 약이에요', items: added.map(MP.drugName), sub: `${OCR_RESULT.org} · 보호자에게는 복약 현황(합계)에만 포함돼요${skipped.length ? ` · 중복 ${skipped.length}건 제외` : ''}` };
     render(true);
   };
 
   /* ---------- 보호자 관리 (어르신) ---------- */
+  const toggle = (on, js) => `<span class="toggle"><input type="checkbox" ${on ? 'checked' : ''} onchange="${js}"><span></span></span>`;
   SCREENS.guardians = () => {
-    const gs = P.guardians;
+    const gs = P.guardians, sh = P.sharing || MP.defaultSharing();
     return `${topbar('보호자 관리', { backBtn: false })}
       <div class="body">
-        <div class="muted" style="font-size:15px">보호자는 내가 허락한 만큼만 볼 수 있어요. 권한은 언제든 끌 수 있고, 끄면 바로 적용돼요.</div>
+        <div class="muted" style="font-size:15px">보호자는 내가 허락한 만큼만 볼 수 있어요. 끄거나 해지하면 바로 적용돼요.</div>
         <div class="sec-title" style="margin-top:6px"><h2>연결된 보호자 ${gs.length}</h2><span class="faint" style="font-size:13px">최대 3명</span></div>
         ${gs.map((g) => `<div class="card gcard">
-          <div class="head"><div class="avatar">${esc(g.name.slice(0, 1))}</div><div class="grow"><b style="font-size:17px">${esc(g.name)}</b><div class="muted" style="font-size:14px">${esc(g.rel)} · ${g.since}부터 · ${esc(g.via || '앱에서 초대')}</div></div>
+          <div class="head"><div class="avatar">${esc(g.name.slice(0, 1))}</div><div class="grow"><b style="font-size:17px">${esc(g.name)}</b><div class="muted" style="font-size:14px">${esc(g.rel)} · ${esc(g.phone || '')} · ${esc(g.via || '앱에서 초대')}</div></div>
             <span class="chip ${g.type === 'care' ? 'primary' : 'ok'}">${g.type === 'care' ? '보건소 담당' : '가족'}</span></div>
           <div style="margin-top:12px">
-            <label class="permrow"><span>오늘 복약 현황 보기</span><span class="toggle"><input type="checkbox" ${g.perms.status ? 'checked' : ''} onchange="A.gPerm('${g.id}','status',this.checked)"><span></span></span></label>
-            <label class="permrow"><span>응급 QR 대신 보여주기</span><span class="toggle"><input type="checkbox" ${g.perms.emergencyQR ? 'checked' : ''} onchange="A.gPerm('${g.id}','emergencyQR',this.checked)"><span></span></span></label>
+            <label class="permrow"><span>① 복약 현황 보기</span>${toggle(g.perms.status, `A.gPerm('${g.id}','status',this.checked)`)}</label>
+            <label class="permrow"><span>② 약 상세 보기</span>${toggle(g.perms.detail, `A.gPerm('${g.id}','detail',this.checked)`)}</label>
+            <label class="permrow"><span>응급 QR 대신 보여주기</span>${toggle(g.perms.emergencyQR, `A.gPerm('${g.id}','emergencyQR',this.checked)`)}</label>
           </div>
           <button class="btn danger block" style="margin-top:12px" onclick="A.unlink('${g.id}')">연결 해지</button>
         </div>`).join('') || `<div class="card empty">${I('users')}<div style="margin-top:8px">아직 연결된 보호자가 없어요.<br>보호자 없이도 약 여권은 모두 쓸 수 있어요.</div></div>`}
         <button class="btn outline lg block" onclick="A.invite()">${I('plus')} 보호자 초대하기</button>
 
-        <div class="sec-title"><h2>약별 공개 범위</h2><button class="link" onclick="A.previewGuardian()">보호자 화면 미리보기</button></div>
-        <div class="card" style="padding-top:6px">
-          <div class="muted" style="font-size:14px;padding:6px 0 4px">모든 보호자에게 같은 범위로 적용돼요. 기본값은 '복약 여부만'이에요.</div>
-          ${P.meds.map((m) => `<div class="visrow"><div class="between"><b>${MP.drugName(m.drug)}</b>${D(m.drug).sensitive ? '<span class="chip warn">민감</span>' : ''}</div>
-            <div class="seg full small">${['full', 'status', 'none'].map((v) => `<button class="${(m.vis || 'status') === v ? 'on' : ''}" onclick="A.setVis('${m.id}','${v}')">${MP.VIS[v].short}</button>`).join('')}</div></div>`).join('')}
+        <div class="sec-title"><h2>보호자에게 공유하는 것</h2><button class="link" onclick="A.previewGuardian()">미리보기</button></div>
+        <div class="card">
+          <div class="between"><div><b style="font-size:16px">① 복약 현황</b><div class="muted" style="font-size:14px">고른 약들을 <b>합쳐서</b> 다 드셨는지만 보여요. 약 이름과 개수는 안 보여요.</div></div>${toggle(sh.status, 'A.shStatus(this.checked)')}</div>
+          ${sh.status ? `
+          <div class="seg full small" style="margin-top:12px">${Object.entries(MP.SHARE_LVL).map(([k, t]) => `<button class="${sh.lvl === k ? 'on' : ''}" onclick="A.shLvl('${k}')">${t}</button>`).join('')}</div>
+          ${sh.lvl === 'slot' ? `<div class="alert warn" style="margin-top:10px;font-size:14px">${I('alert')}<span>시간대 단위는 아침·저녁·자기 전처럼 <b>약 먹는 시간대</b>가 보여요.</span></div>` : ''}
+          <div class="muted" style="font-size:13px;margin:14px 0 2px">복약 현황에 포함할 약</div>
+          ${P.meds.map((m) => `<label class="permrow"><span>${MP.drugName(m.drug)}${D(m.drug).sensitive ? ' <span class="chip warn" style="font-size:11px;padding:1px 6px">민감</span>' : ''}</span><input type="checkbox" style="width:20px;height:20px;accent-color:var(--primary)" ${m.inStatus !== false ? 'checked' : ''} onchange="A.medInc('${m.id}',this.checked)"></label>`).join('')}` : ''}
         </div>
-        <div class="notice">${I('alert')}<span>보호자가 내 정보를 볼 때마다 알림이 와요. 기록은 내 정보 › 열람 기록에서 볼 수 있어요.</span></div>
+        <div class="card">
+          <b style="font-size:16px">② 약 상세</b><div class="muted" style="font-size:14px">켠 약만 이름·함량·복용법·복용 여부가 보여요. 처음에는 모두 꺼져 있어요.</div>
+          <div style="margin-top:8px">${P.meds.map((m) => `<label class="permrow"><span>${MP.drugName(m.drug)}${D(m.drug).sensitive ? ' <span class="chip warn" style="font-size:11px;padding:1px 6px">민감</span>' : ''}</span>${toggle(m.share, `A.medShare('${m.id}',this.checked)`)}</label>`).join('')}</div>
+        </div>
+        <div class="notice">${I('shield')}<span>상세 공유하지 않은 약은 개수나 시간으로도 드러나지 않아요. 보호자가 볼 때마다 알림이 오고, 기록은 내 정보 › 열람 기록에 남아요.</span></div>
       </div>`;
   };
-  A.setVis = (id, v) => { const m = P.meds.find((x) => x.id === id); m.vis = v; save(); render(); MP.toast(`${D(m.drug).ko}: ${MP.VIS[v].label}`); };
+  A.shStatus = (v) => { P.sharing = { ...(P.sharing || MP.defaultSharing()), status: v }; save(); render(); MP.toast(v ? '복약 현황 공유를 켰어요' : '복약 현황 공유를 껐어요'); };
+  A.shLvl = (l) => { P.sharing.lvl = l; save(); render(); };
+  A.medInc = (id, v) => { const m = P.meds.find((x) => x.id === id); m.inStatus = v; save(); MP.toast(`${D(m.drug).ko}: 복약 현황 ${v ? '포함' : '제외'}`); };
+  A.medShare = (id, v) => { const m = P.meds.find((x) => x.id === id); m.share = v; save(); MP.toast(`${D(m.drug).ko}: 약 상세 ${v ? '공유' : '비공유'}`); };
   A.gPerm = (id, k, v) => { const g = P.guardians.find((x) => x.id === id); g.perms[k] = v; save(); MP.toast('바로 적용됐어요'); };
   A.unlink = (id) => {
     const g = P.guardians.find((x) => x.id === id);
@@ -538,49 +565,59 @@
     save(); A.closeModal(); render(); MP.toast('해지했어요. 보호자 화면에서 바로 차단돼요.');
   };
   A.invite = () => {
+    const sh = P.sharing || MP.defaultSharing();
     modal(`<div class="between"><h3 style="margin:0">보호자 초대하기</h3><button class="btn ghost sm" onclick="A.closeModal()">${I('x')}</button></div>
       <div class="stack" style="margin-top:14px">
         <div><div class="muted" style="font-size:13px;margin-bottom:6px">누구를 연결할까요?</div><div class="seg full" id="gtype"><button class="on" data-v="family" onclick="A.pickType(this)">가족</button><button data-v="care" onclick="A.pickType(this)">보건소 돌봄 담당자</button></div></div>
-        <label class="field"><span>이름</span><input class="input" id="gname" value="김민수"></label>
-        <label class="field"><span>나와의 관계</span><input class="input" id="grel" value="아들"></label>
-        <div class="notice">${I('eye')}<span>보호자는 '약별 공개 범위'에서 정한 만큼만 봐요. 지금은 ${P.meds.filter((m) => m.vis === 'full').length}개 이름 공개 · ${P.meds.filter((m) => (m.vis || 'status') === 'status').length}개 복약 여부만 · ${P.meds.filter((m) => m.vis === 'none').length}개 비공개</span></div>
+        <div class="row" style="gap:10px"><label class="field grow"><span>이름</span><input class="input" id="gname" value="김민수"></label><label class="field grow"><span>나와의 관계</span><input class="input" id="grel" value="아들"></label></div>
+        <label class="field"><span>보호자 휴대폰 번호 (이 번호의 휴대폰에서만 연결돼요)</span><input class="input mono" id="gphone" value="010-9876-5432" inputmode="tel"></label>
+        <div class="notice">${I('eye')}<span>지금 공유 설정: ① 복약 현황 ${sh.status ? `${MP.SHARE_LVL[sh.lvl]} (약 ${P.meds.filter((m) => m.inStatus !== false).length}개 합계)` : '꺼짐'} · ② 약 상세 ${P.meds.filter((m) => m.share).length}개</span></div>
         <button class="btn primary block lg" onclick="A.makeInvite()">연결 QR 만들기</button>
       </div>`);
   };
-  A.pickType = (b) => { b.parentElement.querySelectorAll('button').forEach((x) => x.classList.remove('on')); b.classList.add('on'); if (b.dataset.v === 'care') { document.getElementById('gname').value = '박○○ 간호사'; document.getElementById('grel').value = '○○구 보건소 방문간호'; } else { document.getElementById('gname').value = '김민수'; document.getElementById('grel').value = '아들'; } };
+  A.pickType = (b) => { b.parentElement.querySelectorAll('button').forEach((x) => x.classList.remove('on')); b.classList.add('on'); const care = b.dataset.v === 'care'; document.getElementById('gname').value = care ? '박○○ 간호사' : '김민수'; document.getElementById('grel').value = care ? '○○구 보건소 방문간호' : '아들'; document.getElementById('gphone').value = care ? '010-5555-0199' : '010-9876-5432'; };
   A.makeInvite = async () => {
     const type = document.querySelector('#gtype .on').dataset.v;
-    const g = { id: 'G-' + MP.rid(6), name: document.getElementById('gname').value.trim() || '보호자', rel: document.getElementById('grel').value.trim() || '가족', type, perms: { status: true, emergencyQR: true }, status: 'active', since: MP.today(), via: '앱에서 초대' };
-    const payload = MP.buildGuardianPayload(P, g);
-    payload.s = P.sex;
+    const phone = document.getElementById('gphone').value.trim();
+    if (MP.normPhone(phone).length < 10) return MP.toast('보호자 휴대폰 번호를 확인해 주세요');
+    const g = { id: 'G-' + MP.rid(6), name: document.getElementById('gname').value.trim() || '보호자', rel: document.getElementById('grel').value.trim() || '가족', type, phone: MP.maskPhone(phone), perms: { status: true, detail: true, emergencyQR: true }, status: 'active', since: MP.today(), via: '앱에서 초대' };
+    const payload = MP.buildGuardianPayload(P, { ...g, phone }, await MP.phoneHash(phone));
     payload.eq = await MP.encode('E', MP.buildEmergencyPayload(P, P.emergencyOpts, P.emerSid || 'E-' + MP.rid(6)));
     const code = await MP.encode('G', payload);
     P.guardians.push(g); save();
-    MP.save('mp.lastInvite', code);
+    MP.save(MP.KEY.lastInvite, { code, ts: Date.now() });
     modal(`<div style="text-align:center"><h3 style="margin-top:0">보호자 휴대폰으로 찍어 주세요</h3>
-      <div class="qr-box" style="width:270px">${MP.qrSVG(code)}</div>
-      <div class="muted" style="margin-top:12px;font-size:14px">1회용 · 24시간 동안 유효 · ${esc(g.name)} (${esc(g.rel)})</div>
+      <div class="qr-box" style="width:280px">${MP.qrSVG(code)}</div>
+      <div class="muted" style="margin-top:12px;font-size:14px">1회용 · 24시간 유효 · ${esc(g.name)} (${esc(g.phone)}) 휴대폰 전용</div>
       <button class="btn primary block" style="margin-top:16px" onclick="A.closeModal();A.render()">완료</button></div>`);
   };
   A.previewGuardian = () => {
-    const rows = guardianRowsFrom(P);
     modal(`<div class="between"><h3 style="margin:0">보호자에게 이렇게 보여요</h3><button class="btn ghost sm" onclick="A.closeModal()">${I('x')}</button></div>
-      <div class="card soft" style="margin-top:12px">${familyTodayList(rows, true)}</div>
-      <div class="muted" style="font-size:13px;margin-top:10px">'비공개' 약은 보호자 화면에 아예 나오지 않아요.</div>`);
+      <div style="margin-top:12px" class="stack">${familyBlocks(MP.guardianSummary(P), { status: true, detail: true }, true, '어머니')}</div>
+      <div class="muted" style="font-size:13px;margin-top:10px">보호자별로 ①·② 보기 권한을 따로 끌 수도 있어요.</div>`);
   };
 
-  /* ---------- 보호자 화면용 데이터 ---------- */
-  function guardianRowsFrom(elder) {
-    let n = 0;
-    return elder.meds.filter((m) => (m.vis || 'status') !== 'none').map((m) => {
-      const slots = MP.FREQ[m.freq].slots.filter(() => medDue(m));
-      return { name: m.vis === 'full' ? MP.drugName(m.drug) : `약 ${String.fromCharCode(9312 + n++)} (이름 비공개)`, hidden: m.vis !== 'full', slots: slots.map((s) => ({ s, done: !!elder.taken.slots[`${m.id}@${s}`] })) };
-    });
+  /* ---------- 보호자 화면 블록 ---------- */
+  function slotChips(slots, live) {
+    return slots.map((x) => live ? `<span class="chip ${x.done ? 'ok' : ''}">${x.done ? '✓ ' : '○ '}${x.s}</span>` : `<span class="chip">${x.s}</span>`).join('') || '<span class="faint" style="font-size:13px">오늘 없음</span>';
   }
-  function familyTodayList(rows, live) {
-    if (!rows.length) return '<div class="muted">공개된 약이 없어요</div>';
-    return rows.map((r) => `<div class="between" style="padding:10px 0;border-bottom:1px solid var(--line-2)"><span style="${r.hidden ? 'color:var(--muted)' : 'font-weight:600'}">${r.hidden ? I('eyeoff') + ' ' : ''}${esc(r.name)}</span>
-      <span class="row" style="gap:6px">${r.slots.map((x) => live ? `<span class="chip ${x.done ? 'ok' : ''}">${x.done ? '✓ ' : '○ '}${x.s}</span>` : `<span class="chip">${x.s}</span>`).join('') || '<span class="faint" style="font-size:13px">오늘 없음</span>'}</span></div>`).join('');
+  function familyBlocks(sum, perm, live, who) {
+    let html = '';
+    if (perm.status) {
+      const st = sum.status;
+      let inner;
+      if (!st) inner = `<div class="muted">복약 현황 공유가 꺼져 있어요.</div>`;
+      else if (!live) inner = `<div class="muted" style="font-size:14px">연결 시점 정보라 오늘 복용 여부는 알 수 없어요.</div>${st.lvl === 'slot' && st.slots ? `<div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">${st.slots.map((s) => `<span class="chip">${s}</span>`).join('')}</div>` : ''}`;
+      else if (!st.any) inner = `<div style="font-size:18px;font-weight:700">오늘 드실 약이 없어요</div>`;
+      else if (st.lvl === 'day') inner = st.done ? `<div class="row" style="font-size:19px;font-weight:800;color:var(--ok)">${I('check', 'lg')} 오늘 약을 다 드셨어요</div>` : `<div class="row" style="font-size:19px;font-weight:800;color:var(--warn)">${I('pill', 'lg')} 아직 드실 약이 남았어요</div>`;
+      else inner = `<div class="row" style="gap:6px;flex-wrap:wrap">${slotChips(st.slots, true)}</div>`;
+      html += `<div class="card"><div class="between"><b>① 오늘 복약 현황</b>${st ? `<span class="chip">${MP.SHARE_LVL[st.lvl]}</span>` : ''}</div><div style="margin-top:10px">${inner}</div></div>`;
+    }
+    if (perm.detail) {
+      html += `<div class="card"><b>② 공유된 약</b>${sum.details.length ? sum.details.map((d) => `<div style="padding:10px 0;border-bottom:1px solid var(--line-2)"><div class="between"><b>${MP.drugName(d.drug)}</b><span class="muted" style="font-size:13px">${MP.FREQ[d.freq].short}</span></div><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">${slotChips(d.slots, live)}</div></div>`).join('') : `<div class="muted" style="margin-top:8px">상세 공유된 약이 없어요.</div>`}</div>`;
+    }
+    if (!perm.status && !perm.detail) html = `<div class="alert info">${I('eyeoff')}<span>공유가 모두 꺼져 있어요.</span></div>`;
+    return html;
   }
 
   /* ---------- 보호자: 가족 약 여권 보기 ---------- */
@@ -589,23 +626,17 @@
     if (!l) { S.profile = 'me'; return basicHome(); }
     const revoked = MP.load(MP.KEY.revokedLinks, []).includes(l.lid);
     const elder = MP.load(MP.KEY.elder, null);
-    const live = elder && elder.pid === l.pid && elder.taken?.date === MP.today();
+    const live = !!(elder && elder.pid === l.pid && elder.taken?.date === MP.today());
+    const liveG = live ? (elder.guardians || []).find((g) => g.id === l.lid) : null;
+    const perm = liveG ? liveG.perms : l.perm;
+    const sum = live ? MP.guardianSummary(elder) : { status: l.st ? { lvl: l.st.lvl, slots: l.st.slots } : null, details: (l.dm || []).map(([drug, freq]) => ({ drug, freq, slots: MP.FREQ[freq].slots.map((s) => ({ s, done: false })) })) };
     let body;
     if (revoked) body = `<div class="alert">${I('lock', 'lg')}<div><b>${esc(l.name)} 님이 연결을 해지했어요</b><br>더 이상 정보를 볼 수 없어요. 필요하면 다시 초대를 받아 주세요.</div></div>
       <button class="btn danger block" onclick="A.removeLinked('${l.lid}')">목록에서 지우기</button>`;
-    else if (!l.perm.status) body = `<div class="alert info">${I('eyeoff')}<span>${esc(l.name)} 님이 복약 현황 공개를 꺼 두었어요.</span></div>`;
-    else {
-      let rows, total = 0, done = 0;
-      if (live) { rows = guardianRowsFrom(elder); rows.forEach((r) => r.slots.forEach((x) => { total++; if (x.done) done++; })); }
-      else { let n = 0; rows = l.meds.map(([id, drug, freq]) => ({ name: drug ? MP.drugName(drug) : `약 ${String.fromCharCode(9312 + n++)} (이름 비공개)`, hidden: !drug, slots: MP.FREQ[freq].slots.map((s) => ({ s, done: false })) })); }
-      body = `<div class="card">
-          <div class="between"><b>오늘 복약</b>${live ? `<span class="chip ${done === total ? 'ok' : 'warn'}">${done} / ${total} 완료</span>` : '<span class="chip">연결 시점 정보</span>'}</div>
-          <div style="margin-top:6px">${familyTodayList(rows, live)}</div>
-          ${live ? '' : '<div class="muted" style="font-size:13px;margin-top:10px">시연 버전은 휴대폰끼리 서버 없이 연결해서, 연결 시점의 공개 범위만 보여요. 실제 서비스에서는 실시간으로 갱신돼요.</div>'}
-        </div>
-        ${l.perm.emergencyQR && l.eq ? `<button class="btn block lg" style="color:var(--danger);border-color:var(--danger-line)" onclick="A.go('proxyQR',{lid:'${l.lid}'})">${I('tri')} 응급 QR 대신 보여주기</button>` : ''}
-        <div class="notice">${I('lock')}<span>${esc(l.name)} 님이 공개를 허락한 정보만 보여요. 내가 볼 때마다 ${esc(l.name)} 님에게 알림이 가요.</span></div>`;
-    }
+    else body = `${familyBlocks(sum, perm, live, esc(l.name) + ' 님')}
+        ${live ? '' : '<div class="muted" style="font-size:13px">시연 버전은 휴대폰끼리 서버 없이 연결해서, 다른 휴대폰에서는 연결 시점의 공유 범위만 보여요. 실제 서비스에서는 실시간으로 갱신돼요.</div>'}
+        ${perm.emergencyQR && l.eq ? `<button class="btn block lg" style="color:var(--danger);border-color:var(--danger-line)" onclick="A.go('proxyQR',{lid:'${l.lid}'})">${I('tri')} 응급 QR 대신 보여주기</button>` : ''}
+        <div class="notice">${I('lock')}<span>${esc(l.name)} 님이 허락한 정보만 보여요. 공유하지 않은 약은 개수도 보이지 않아요. 내가 볼 때마다 ${esc(l.name)} 님에게 알림이 가요.</span></div>`;
     return `<div class="topbar">${I('sidebar', 'lg')}<h1>약 여권</h1></div>
       <div class="body">${profileSwitcher()}
         <div class="card pcard"><div class="between"><span class="name">${esc(l.name)}</span><span class="chip ${l.gt === 'care' ? 'primary' : 'ok'}">${esc(l.label)}</span></div>
@@ -616,16 +647,16 @@
   AFTER.home = () => {
     if (WHO !== 'guardian' || S.profile === 'me' || S._viewLogged === S.profile) return;
     const l = (P.linked || []).find((x) => x.lid === S.profile); if (!l) return;
-    if (MP.load(MP.KEY.revokedLinks, []).includes(l.lid) || !l.perm.status) {
-      MP.addAudit({ who: `[보호자] ${P.pid}`, role: '보호자', pid: l.pid, action: '복약 현황 조회', path: '보호자 위임', result: '거부 · 위임 철회됨', ip: '10.0.8.203' });
-      S._viewLogged = S.profile; return;
-    }
     S._viewLogged = S.profile;
+    if (MP.load(MP.KEY.revokedLinks, []).includes(l.lid)) {
+      MP.addAudit({ who: `[보호자] ${P.pid}`, role: '보호자', pid: l.pid, action: '복약 현황 조회', path: '보호자 위임', result: '거부 · 위임 철회됨', ip: '10.0.8.203' });
+      return;
+    }
     MP.addAudit({ who: `[보호자] ${P.pid}`, role: '보호자', pid: l.pid, action: '복약 현황 조회', path: '보호자 위임', result: '허용', ip: '10.0.8.203' });
     const elder = MP.load(MP.KEY.elder, null);
     if (elder && elder.pid === l.pid) {
       elder.notifications = elder.notifications || [];
-      elder.notifications.push({ ts: Date.now(), text: `${l.rel} ${P.name} 님이 오늘 복약 현황을 확인했어요`, read: false });
+      elder.notifications.push({ ts: Date.now(), text: `${l.rel} ${P.name} 님이 공유된 복약 정보를 확인했어요`, read: false });
       elder.accessLog.push({ ts: Date.now(), who: `${P.name} (${l.rel})`, role: '보호자', action: '복약 현황 조회', path: '보호자 위임', result: '허용' });
       MP.save(MP.KEY.elder, elder);
     }
